@@ -74,6 +74,8 @@ export const resumeAPI = {
   
   getSkillProfile: (userId) => api.get(`/users/${userId}/skill-profile`),
   
+  toggleShare: (resumeId, shared) => api.put(`/resumes/${resumeId}/share`, { shared }),
+  
   delete: (resumeId) => api.delete(`/resumes/${resumeId}`),
 };
 
@@ -84,9 +86,25 @@ export const jobsAPI = {
   getById: (jobId) => api.get(`/jobs/${jobId}`),
   
   create: (data, recruiterId) => api.post(`/jobs/?recruiter_id=${recruiterId}`, data),
+
+  update: (jobId, data) => api.put(`/jobs/${jobId}`, data),
+  
+  delete: (jobId) => api.delete(`/jobs/${jobId}`),
   
   getCandidates: (jobId, minScore = 0) => 
     api.get(`/jobs/${jobId}/candidates?min_score=${minScore}`),
+    
+  uploadCandidates: (jobId, files) => {
+    const formData = new FormData();
+    Array.from(files).forEach((file) => {
+      formData.append("files", file);
+    });
+    return api.post(`/jobs/${jobId}/upload-candidates`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+  },
 };
 
 // Matching API

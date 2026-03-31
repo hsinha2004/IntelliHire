@@ -18,10 +18,13 @@ import {
   Filter,
   Search,
   X,
+  Edit,
+  Trash2,
   Award,
   Cpu,
   Activity,
   ArrowUpRight,
+  Upload,
   ArrowDownRight,
   Minus,
 } from "lucide-react";
@@ -34,6 +37,16 @@ const RecruiterDashboard = () => {
   const [selectedJob, setSelectedJob] = useState(null);
   const [activeTab, setActiveTab] = useState("jobs");
   const [showCreateJob, setShowCreateJob] = useState(false);
+  const [showEditJob, setShowEditJob] = useState(false);
+  const [editingJobId, setEditingJobId] = useState(null);
+  const [editJobForm, setEditJobForm] = useState({
+    title: "",
+    company: "",
+    description: "",
+    location: "",
+    job_type: "full-time",
+    experience_required: "",
+  });
   const [selectedModel, setSelectedModel] = useState("bert");
   const [modelComparison, setModelComparison] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -108,6 +121,58 @@ const RecruiterDashboard = () => {
     }
   };
 
+  const handleEditJobClick = (e, job) => {
+    e.stopPropagation();
+    setEditingJobId(job.job_id);
+    setEditJobForm({
+      title: job.title || "",
+      company: job.company || "",
+      description: job.description || "",
+      location: job.location || "",
+      job_type: job.job_type || "full-time",
+      experience_required: job.experience_required || "",
+    });
+    setShowEditJob(true);
+  };
+
+  const submitEditJob = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      await jobsAPI.update(editingJobId, editJobForm);
+      setShowEditJob(false);
+      setEditingJobId(null);
+      fetchJobs();
+      if (selectedJob?.job_id === editingJobId) {
+        const updated = await jobsAPI.getById(editingJobId);
+        setSelectedJob(updated.data);
+      }
+    } catch (error) {
+      console.error("Error updating job:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteJob = async (e, jobId) => {
+    e.stopPropagation();
+    if (window.confirm("Are you sure you want to permanently delete this job?")) {
+      setIsLoading(true);
+      try {
+        await jobsAPI.delete(jobId);
+        if (selectedJob?.job_id === jobId) {
+          setSelectedJob(null);
+          setCandidates([]);
+        }
+        fetchJobs();
+      } catch (error) {
+        console.error("Error deleting job:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
   const rankCandidates = async (jobId, model) => {
     setIsLoading(true);
     setSelectedModel(model);
@@ -118,6 +183,24 @@ const RecruiterDashboard = () => {
       console.error("Error ranking candidates:", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleBatchUpload = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    setIsLoading(true);
+    try {
+      await jobsAPI.uploadCandidates(selectedJob.job_id, files);
+      await fetchCandidates(selectedJob.job_id);
+      alert(`Successfully uploaded and analyzed ${files.length} candidate(s)!`);
+    } catch (error) {
+      console.error("Error batch uploading candidates:", error);
+      alert("Failed to upload candidates. Please try again.");
+    } finally {
+      setIsLoading(false);
+      e.target.value = null; // Reset input
     }
   };
 
@@ -383,6 +466,135 @@ const RecruiterDashboard = () => {
               </div>
             )}
 
+            {/* Edit Job Modal */}
+            {showEditJob && (
+              <div className="modal-overlay" style={{zIndex: 1000}}>
+                <div className="modal">
+                  <div className="modal-header">
+                    <h3>Edit Job Posting</h3>
+                    <button
+                      className="modal-close"
+                      onClick={() => setShowEditJob(false)}
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <form onSubmit={submitEditJob} className="modal-form">
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label className="form-label">Job Title</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="e.g., Senior Software Engineer"
+                          value={editJobForm.title}
+                          onChange={(e) =>
+                            setEditJobForm({ ...editJobForm, title: e.target.value })
+                          }
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Company</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="e.g., Tech Corp"
+                          value={editJobForm.company}
+                          onChange={(e) =>
+                            setEditJobForm({ ...editJobForm, company: e.target.value })
+                          }
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Description</label>
+                      <textarea
+                        className="form-textarea"
+                        placeholder="Describe the role, responsibilities, and required skills..."
+                        value={editJobForm.description}
+                        onChange={(e) =>
+                          setEditJobForm({ ...editJobForm, description: e.target.value })
+                        }
+                        required
+                      />
+                    </div>
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label className="form-label">Location</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="e.g., New York, NY"
+                          value={editJobForm.location}
+                          onChange={(e) =>
+                            setEditJobForm({ ...editJobForm, location: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Job Type</label>
+                        <select
+                          className="form-select"
+                          value={editJobForm.job_type}
+                          onChange={(e) =>
+                            setEditJobForm({ ...editJobForm, job_type: e.target.value })
+                          }
+                        >
+                          <option value="full-time">Full-time</option>
+                          <option value="part-time">Part-time</option>
+                          <option value="contract">Contract</option>
+                          <option value="internship">Internship</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Experience Required</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g., 3-5 years"
+                        value={editJobForm.experience_required}
+                        onChange={(e) =>
+                          setEditJobForm({
+                            ...editJobForm,
+                            experience_required: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="modal-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setShowEditJob(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={isLoading}
+                      >
+                        {isLoading ? (
+                          <>
+                            <span className="spinner"></span>
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Edit size={18} />
+                            Save Changes
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
             {/* Jobs List */}
             <div className="jobs-grid">
               {jobs.map((job) => (
@@ -410,6 +622,24 @@ const RecruiterDashboard = () => {
                           </span>
                         )}
                       </div>
+                    </div>
+                    <div className="job-actions" style={{display: 'flex', gap: '8px', zIndex: 10, marginLeft: 'auto', marginRight: '10px'}}>
+                      <button 
+                        className="icon-btn" 
+                        onClick={(e) => handleEditJobClick(e, job)} 
+                        title="Edit Job"
+                        style={{background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)'}}
+                      >
+                         <Edit size={18} />
+                      </button>
+                      <button 
+                        className="icon-btn" 
+                        onClick={(e) => handleDeleteJob(e, job.job_id)} 
+                        title="Delete Job" 
+                        style={{background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--error)'}}
+                      >
+                         <Trash2 size={18} />
+                      </button>
                     </div>
                     <ChevronRight size={20} className="job-arrow" />
                   </div>
@@ -475,7 +705,7 @@ const RecruiterDashboard = () => {
             </div>
 
             {/* Compare Models Button */}
-            <div className="compare-section">
+            <div className="compare-section" style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-start' }}>
               <button
                 className="btn btn-secondary"
                 onClick={() => compareModels(selectedJob.job_id)}
@@ -484,6 +714,27 @@ const RecruiterDashboard = () => {
                 <BarChart3 size={18} />
                 Compare All Models
               </button>
+              
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="file"
+                  id="batch-upload"
+                  multiple
+                  accept=".pdf"
+                  onChange={handleBatchUpload}
+                  style={{ position: 'absolute', width: '0', height: '0', opacity: 0, overflow: 'hidden' }}
+                  disabled={isLoading}
+                />
+                <button
+                  className="btn btn-primary"
+                  onClick={() => document.getElementById('batch-upload').click()}
+                  disabled={isLoading}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--primary)', color: 'white', border: 'none', padding: '0.6rem 1.2rem', borderRadius: 'var(--radius-md)', cursor: isLoading ? 'not-allowed' : 'pointer', opacity: isLoading ? 0.7 : 1 }}
+                >
+                  <Upload size={18} />
+                  Upload Offline Resumes
+                </button>
+              </div>
             </div>
 
             {/* Candidates List */}

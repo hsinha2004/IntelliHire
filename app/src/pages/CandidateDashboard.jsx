@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Upload,
@@ -45,6 +45,41 @@ const CandidateDashboard = () => {
   const [resumesList, setResumesList] = useState([]);
   const [isDeleting, setIsDeleting] = useState(null);
   const navigate = useNavigate();
+
+  const groupedSkills = useMemo(() => {
+    if (!analysis?.skills) return {};
+    const groups = {
+      "Engineering": [],
+      "Data & AI": [],
+      "Infrastructure": [],
+      "Core Skills": []
+    };
+    
+    // Skill categorization logic based on the image's groupings
+    const engKeywords = ["javascript", "python", "java", "c++", "c#", "html", "css", "react", "node", "angular", "typescript", "ruby", "php", "swift", "django", "flask", "spring", "vue", "android", "ios"];
+    const dataKeywords = ["data", "machine", "deep", "tensorflow", "pytorch", "nlp", "pandas", "numpy", "sql", "statistics", "math", "analytics", "scikit", "tableau", "power bi", "r", "opencv"];
+    const infraKeywords = ["aws", "azure", "cloud", "docker", "kubernetes", "git", "linux", "jenkins", "devops", "mongo", "postgres", "mysql", "redis", "nginx", "kafka", "elasticsearch", "cassandra", "github", "agile"];
+    
+    analysis.skills.forEach(skill => {
+      const s = skill.toLowerCase();
+      if (dataKeywords.some(k => s.includes(k))) groups["Data & AI"].push(skill);
+      else if (infraKeywords.some(k => s.includes(k))) groups["Infrastructure"].push(skill);
+      else if (engKeywords.some(k => s.includes(k))) groups["Engineering"].push(skill);
+      else groups["Core Skills"].push(skill);
+    });
+    
+    // Only return groups that actually have skills
+    return Object.fromEntries(Object.entries(groups).filter(([_, arr]) => arr.length > 0));
+  }, [analysis?.skills]);
+
+  // Coordinates and organic SVG paths mapping to the visual positions
+  const cloudLayouts = [
+    { top: '5%', left: '5%', path: "M 50 50 C 40 30, 20 45, 20 25" },
+    { top: '5%', right: '5%', path: "M 50 50 C 60 30, 80 45, 80 25" },
+    { bottom: '5%', left: '5%', path: "M 50 50 C 40 70, 20 55, 20 75" },
+    { bottom: '5%', right: '5%', path: "M 50 50 C 60 70, 80 55, 80 75" },
+    { top: '35%', left: '0%', path: "M 50 50 Q 25 50, 10 50" }
+  ];
 
   const fetchLiveJobs = async () => {
     if (!analysis?.resume_id) return;
@@ -169,6 +204,18 @@ const CandidateDashboard = () => {
     }
   };
 
+  const handleToggleShare = async (resumeId, currentSharedStatus) => {
+    try {
+      await resumeAPI.toggleShare(resumeId, !currentSharedStatus);
+      setResumesList(resumesList.map(r => 
+        r.resume_id === resumeId ? { ...r, shared_with_recruiters: !currentSharedStatus } : r
+      ));
+    } catch (error) {
+      console.error("Error toggling share status:", error);
+      alert("Failed to update sharing status. Please try again.");
+    }
+  };
+
   const handleSkillSimulation = (skill) => {
     if (simulatedSkills.includes(skill)) {
       setSimulatedSkills(simulatedSkills.filter((s) => s !== skill));
@@ -178,13 +225,15 @@ const CandidateDashboard = () => {
   };
 
   const getMatchScore = (job) => {
-    if (!analysis) return job.similarity_score || 0;
+    if (!analysis) return job.similarity_score || job.match_score || 0;
     
     // Calculate simulated score with added skills
-    const baseScore = job.similarity_score || 0;
+    const baseScore = job.similarity_score || job.match_score || 0;
     const missingSkills = job.missing_skills || [];
+    const missingSkillsLower = missingSkills.map(s => s.toLowerCase());
+    
     const matchedSimulated = simulatedSkills.filter((s) =>
-      missingSkills.includes(s.toLowerCase())
+      missingSkillsLower.includes(s.toLowerCase())
     );
     
     if (missingSkills.length > 0 && matchedSimulated.length > 0) {
@@ -192,6 +241,51 @@ const CandidateDashboard = () => {
       return Math.min(100, baseScore + boost);
     }
     return baseScore;
+  };
+
+  const renderSimulationBlock = () => {
+    if (!analysis) return null;
+    return (
+      <div className="simulation-section" style={{ marginBottom: "2rem" }}>
+        <div className="simulation-header">
+          <div>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Lightbulb size={20} color="#a855f7" />
+              What-If Skill Simulation
+            </h3>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>Toggle your learning gaps to dynamically boost your job match score</p>
+          </div>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShowSimulation(!showSimulation)}
+            style={{ padding: '0.4rem 0.8rem', background: "rgba(168, 85, 247, 0.1)", color: "#c084fc", border: "1px solid rgba(168, 85, 247, 0.3)" }}
+          >
+            {showSimulation ? "Hide" : "Show"} Simulation
+          </button>
+        </div>
+
+        {showSimulation && (
+          <div className="simulation-skills" style={{ marginTop: "1rem", display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+            {analysis.skill_gaps?.map((skill, index) => (
+              <label key={index} className="simulation-skill" style={{
+                display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", 
+                background: simulatedSkills.includes(skill) ? "rgba(168, 85, 247, 0.2)" : "rgba(30, 41, 59, 0.5)", 
+                border: simulatedSkills.includes(skill) ? "1px solid #a855f7" : "1px solid rgba(255,255,255,0.05)",
+                borderRadius: "20px", cursor: "pointer", transition: "all 0.2s"
+              }}>
+                <input
+                  type="checkbox"
+                  checked={simulatedSkills.includes(skill)}
+                  onChange={() => handleSkillSimulation(skill)}
+                  style={{ accentColor: "#a855f7", cursor: "pointer" }}
+                />
+                <span style={{ fontSize: "0.875rem", fontWeight: 500, color: simulatedSkills.includes(skill) ? "#fff" : "var(--text-secondary)" }}>{skill}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const skillStrengthData = analysis
@@ -424,16 +518,31 @@ const CandidateDashboard = () => {
                             </p>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleDeleteResume(r.resume_id)}
-                          disabled={isDeleting === r.resume_id}
-                          style={{ background: "transparent", border: "none", color: "var(--error)", cursor: isDeleting === r.resume_id ? "not-allowed" : "pointer", padding: "0.75rem", borderRadius: "var(--radius-md)", opacity: isDeleting === r.resume_id ? 0.5 : 1, transition: "background 0.2s" }}
-                          onMouseOver={e => !isDeleting && (e.currentTarget.style.background = "rgba(239, 68, 68, 0.15)")}
-                          onMouseOut={e => !isDeleting && (e.currentTarget.style.background = "transparent")}
-                          title="Delete Resume"
-                        >
-                          {isDeleting === r.resume_id ? <RefreshCw size={22} className="animate-spin" /> : <Trash2 size={22} />}
-                        </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                          <button
+                            onClick={() => handleToggleShare(r.resume_id, r.shared_with_recruiters)}
+                            style={{ 
+                              display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 0.75rem", borderRadius: "20px", fontSize: "0.8rem", fontWeight: 500, border: "none", cursor: "pointer", transition: "all 0.2s",
+                              background: r.shared_with_recruiters ? "rgba(34, 197, 94, 0.15)" : "rgba(255, 255, 255, 0.05)",
+                              color: r.shared_with_recruiters ? "var(--success)" : "var(--text-secondary)",
+                              boxShadow: r.shared_with_recruiters ? "inset 0 0 10px rgba(34, 197, 94, 0.3)" : "none"
+                            }}
+                            title={r.shared_with_recruiters ? "Currently visible to Recruiters" : "Hidden from Recruiters"}
+                          >
+                            <Globe size={14} />
+                            {r.shared_with_recruiters ? "Shared" : "Private"}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteResume(r.resume_id)}
+                            disabled={isDeleting === r.resume_id}
+                            style={{ background: "transparent", border: "none", color: "var(--error)", cursor: isDeleting === r.resume_id ? "not-allowed" : "pointer", padding: "0.75rem", borderRadius: "var(--radius-md)", opacity: isDeleting === r.resume_id ? 0.5 : 1, transition: "background 0.2s" }}
+                            onMouseOver={e => !isDeleting && (e.currentTarget.style.background = "rgba(239, 68, 68, 0.15)")}
+                            onMouseOut={e => !isDeleting && (e.currentTarget.style.background = "transparent")}
+                            title="Delete Resume"
+                          >
+                            {isDeleting === r.resume_id ? <RefreshCw size={22} className="animate-spin" /> : <Trash2 size={22} />}
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -447,57 +556,360 @@ const CandidateDashboard = () => {
         {activeTab === "skills" && analysis && (
           <div className="tab-content">
             <div className="skills-grid">
-              {/* Extracted Skills */}
-              <div className="skills-card">
-                <div className="card-header">
-                  <Brain size={20} />
-                  <h3>Extracted Skills</h3>
+              {/* Networked Skills Diagram */}
+              <div className="skills-card" style={{ gridColumn: '1 / -1', padding: '1rem', background: 'var(--bg-card)', border: 'none', boxShadow: 'none' }}>
+                <div className="card-header" style={{ marginBottom: '1rem', padding: '0 1rem' }}>
+                  <Brain size={20} color="var(--primary)" />
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>AI Skill Extraction Network</h3>
                 </div>
-                <div className="skills-list">
-                  {analysis.skills.map((skill, index) => (
-                    <span key={index} className="skill-tag">
-                      {skill}
-                    </span>
-                  ))}
+                
+                <div className="network-diagram-container" style={{ 
+                  position: 'relative', 
+                  width: '100%', 
+                  height: '600px', 
+                  backgroundColor: '#0f172a',
+                  backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(30, 64, 175, 0.15), transparent 70%), linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)',
+                  backgroundSize: '100% 100%, 30px 30px, 30px 30px',
+                  borderRadius: '24px',
+                  overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  boxShadow: 'inset 0 0 60px rgba(0,0,0,0.5), 0 10px 30px rgba(0,0,0,0.1)'
+                }}>
+                  {/* SVG Background Connecting Lines */}
+                  <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }} viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="lineGrad1" x1="50%" y1="50%" x2="0%" y2="0%">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
+                        <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.2" />
+                      </linearGradient>
+                      <linearGradient id="lineGrad2" x1="50%" y1="50%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
+                        <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.2" />
+                      </linearGradient>
+                      <linearGradient id="lineGrad3" x1="50%" y1="50%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
+                        <stop offset="100%" stopColor="#10b981" stopOpacity="0.2" />
+                      </linearGradient>
+                      <linearGradient id="lineGrad4" x1="50%" y1="50%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
+                        <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.2" />
+                      </linearGradient>
+                      <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="1" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
+                    </defs>
+                    {Object.keys(groupedSkills).map((_, i) => {
+                      if (i >= cloudLayouts.length) return null;
+                      const grads = ["url(#lineGrad1)", "url(#lineGrad2)", "url(#lineGrad3)", "url(#lineGrad4)"];
+                      return (
+                        <path 
+                          key={`path-${i}`}
+                          d={cloudLayouts[i].path} 
+                          fill="none" 
+                          stroke={grads[i % 4]} 
+                          strokeWidth="0.5"
+                          filter="url(#glow)"
+                        />
+                      );
+                    })}
+                  </svg>
+                  
+                  {/* Central Concept Node */}
+                  <div className="central-node" style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 10,
+                    background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)',
+                    padding: '1.5rem',
+                    borderRadius: '50%',
+                    boxShadow: '0 0 0 8px rgba(59, 130, 246, 0.1), 0 0 40px rgba(59, 130, 246, 0.6), inset 0 2px 10px rgba(255,255,255,0.4)',
+                    border: '2px solid rgba(255,255,255,0.8)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '120px',
+                    height: '120px',
+                    textAlign: 'center',
+                    color: '#ffffff'
+                  }}>
+                    <Brain size={32} color="#ffffff" style={{ marginBottom: '0.4rem', filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.8))' }} />
+                    <span style={{ fontSize: '0.65rem', fontWeight: '800', letterSpacing: '1.5px', textShadow: '0 2px 4px rgba(0,0,0,0.5)', textTransform: 'uppercase' }}>AI Core</span>
+                  </div>
+
+                  {/* Cloud Clusters */}
+                  {Object.entries(groupedSkills).map(([category, skills], i) => {
+                    if (i >= cloudLayouts.length) return null;
+                    const layout = cloudLayouts[i];
+                    
+                    return (
+                      <div 
+                        key={category} 
+                        className="skill-cloud"
+                        style={{
+                          position: 'absolute',
+                          top: layout.top,
+                          bottom: layout.bottom,
+                          left: layout.left,
+                          right: layout.right,
+                          zIndex: 5,
+                          background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.9))',
+                          backdropFilter: 'blur(16px)',
+                          WebkitBackdropFilter: 'blur(16px)',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          borderTop: '1px solid rgba(255, 255, 255, 0.15)',
+                          borderRadius: '24px',
+                          padding: '1.5rem',
+                          maxWidth: '280px',
+                          minWidth: '220px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          boxShadow: '0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1)',
+                          transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-5px) scale(1.03)';
+                          e.currentTarget.style.boxShadow = '0 30px 50px rgba(0,0,0,0.6), 0 0 20px rgba(59,130,246,0.2), inset 0 1px 0 rgba(255,255,255,0.2)';
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                          e.currentTarget.style.boxShadow = '0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1)';
+                        }}
+                      >
+                        <h4 style={{ 
+                          textAlign: 'center', 
+                          margin: '0 0 1.25rem 0', 
+                          color: '#e2e8f0',
+                          fontSize: '0.75rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '2px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px'
+                        }}>
+                          <span style={{ height: '1px', flex: 1, background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2))' }}></span>
+                          <span style={{ fontWeight: 700, opacity: 0.9 }}>{category}</span>
+                          <span style={{ height: '1px', flex: 1, background: 'linear-gradient(90deg, rgba(255,255,255,0.2), transparent)' }}></span>
+                        </h4>
+                        
+                        <div style={{ 
+                          display: 'flex', 
+                          flexWrap: 'wrap', 
+                          gap: '6px', 
+                          justifyContent: 'center', 
+                          alignItems: 'center' 
+                        }}>
+                          {skills.map((skill, index) => {
+                            const strength = analysis.skill_strength?.[skill] || 50;
+                            const isHigh = strength > 80;
+                            const isMed = strength > 50;
+                            
+                            const minFontSize = 0.75;
+                            const maxFontSize = 1.35;
+                            const fontSize = minFontSize + (strength / 100) * (maxFontSize - minFontSize);
+                            
+                            let skillColor = isHigh ? '#2dd4bf' : isMed ? '#f8fafc' : '#94a3b8';
+                            let skillGlow = isHigh ? '0 0 12px rgba(45, 212, 191, 0.4)' : 'none';
+                            
+                            return (
+                              <span 
+                                key={index} 
+                                style={{ 
+                                  fontSize: `${fontSize}rem`,
+                                  color: skillColor,
+                                  textShadow: skillGlow,
+                                  fontWeight: isHigh ? 700 : isMed ? 500 : 400,
+                                  lineHeight: 1.2,
+                                  padding: '4px 8px',
+                                  background: isHigh ? 'rgba(45, 212, 191, 0.08)' : 'transparent',
+                                  borderRadius: '6px',
+                                  cursor: 'default',
+                                  transition: 'all 0.2s ease',
+                                }}
+                                title={`${skill} (Strength: ${strength}%)`}
+                                onMouseOver={(e) => {
+                                  e.currentTarget.style.color = '#ffffff';
+                                  e.currentTarget.style.transform = 'translateY(-2px)';
+                                  e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+                                }}
+                                onMouseOut={(e) => {
+                                  e.currentTarget.style.color = skillColor;
+                                  e.currentTarget.style.transform = 'translateY(0)';
+                                  e.currentTarget.style.background = isHigh ? 'rgba(45, 212, 191, 0.08)' : 'transparent';
+                                  e.currentTarget.style.boxShadow = 'none';
+                                }}
+                              >
+                                {skill}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Skill Strength */}
-              <div className="skills-card wide">
-                <div className="card-header">
-                  <BarChart3 size={20} />
-                  <h3>Skill Strength Analysis</h3>
+              <div className="skills-card wide" style={{ 
+                background: 'var(--bg-card)', 
+                border: 'none', 
+                boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                padding: '2rem'
+              }}>
+                <div className="card-header" style={{ marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <BarChart3 size={24} color="var(--primary)" style={{ filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.5))' }} />
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '0.5px' }}>Skill Strength Analysis</h3>
                 </div>
-                <div className="skill-bars">
-                  {skillStrengthData.slice(0, 10).map((skill, index) => (
-                    <div key={index} className="skill-bar-item">
-                      <div className="skill-bar-header">
-                        <span className="skill-name">{skill.name}</span>
-                        <span className="skill-score">{skill.strength}%</span>
+                <div className="skill-bars" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  {skillStrengthData.slice(0, 10).map((skill, index) => {
+                    const isHigh = skill.strength > 80;
+                    const isMed = skill.strength > 60;
+                    
+                    const barColor = isHigh 
+                      ? 'linear-gradient(90deg, #0f766e, #2dd4bf)' 
+                      : isMed 
+                        ? 'linear-gradient(90deg, #1e3a8a, #3b82f6)' 
+                        : 'linear-gradient(90deg, #4c1d95, #8b5cf6)';
+                        
+                    const glowColor = isHigh 
+                      ? 'rgba(45, 212, 191, 0.5)' 
+                      : isMed 
+                        ? 'rgba(59, 130, 246, 0.5)' 
+                        : 'rgba(139, 92, 246, 0.5)';
+
+                    return (
+                      <div key={index} className="premium-skill-bar" style={{
+                        background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.3), rgba(15, 23, 42, 0.5))',
+                        padding: '1.25rem 1.5rem',
+                        borderRadius: '16px',
+                        border: '1px solid rgba(255,255,255,0.03)',
+                        transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.background = 'linear-gradient(145deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.8))';
+                        e.currentTarget.style.transform = 'translateX(8px)';
+                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+                        e.currentTarget.style.boxShadow = `0 15px 30px rgba(0,0,0,0.4), -4px 0 0 ${isHigh ? '#2dd4bf' : isMed ? '#3b82f6' : '#8b5cf6'}`;
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.background = 'linear-gradient(145deg, rgba(30, 41, 59, 0.3), rgba(15, 23, 42, 0.5))';
+                        e.currentTarget.style.transform = 'translateX(0)';
+                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.03)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center' }}>
+                          <span style={{ 
+                            fontWeight: '600', 
+                            color: '#f8fafc',
+                            textTransform: 'uppercase',
+                            letterSpacing: '1.5px',
+                            fontSize: '0.85rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
+                          }}>
+                            <div style={{ 
+                              width: '8px', 
+                              height: '8px', 
+                              borderRadius: '50%',
+                              background: isHigh ? '#2dd4bf' : isMed ? '#3b82f6' : '#8b5cf6',
+                              boxShadow: `0 0 12px ${glowColor}`
+                            }}></div>
+                            {skill.name}
+                          </span>
+                          <span style={{ 
+                            fontWeight: '700', 
+                            color: isHigh ? '#2dd4bf' : isMed ? '#38bdf8' : '#a78bfa',
+                            fontSize: '1.1rem',
+                            fontFamily: 'monospace',
+                            letterSpacing: '1px',
+                            textShadow: `0 0 10px ${glowColor}`
+                          }}>
+                            {skill.strength}%
+                          </span>
+                        </div>
+                        
+                        <div style={{ 
+                          height: '8px', 
+                          background: 'rgba(0,0,0,0.5)', 
+                          borderRadius: '4px',
+                          overflow: 'hidden',
+                          boxShadow: 'inset 0 2px 5px rgba(0,0,0,0.8)',
+                          position: 'relative'
+                        }}>
+                          <div style={{ 
+                            width: `${skill.strength}%`, 
+                            height: '100%',
+                            background: barColor,
+                            borderRadius: '4px',
+                            boxShadow: `0 0 15px ${glowColor}`,
+                            position: 'relative',
+                            transition: 'width 1.5s cubic-bezier(0.22, 1, 0.36, 1)'
+                          }}>
+                            {/* Glowing leading edge */}
+                            <div style={{
+                              position: 'absolute',
+                              right: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: '30px',
+                              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.9))',
+                              borderRadius: '0 4px 4px 0'
+                            }} />
+                          </div>
+                        </div>
                       </div>
-                      <div className="progress-bar">
-                        <div
-                          className="progress-fill"
-                          style={{ width: `${skill.strength}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Skill Gaps */}
-              <div className="skills-card">
-                <div className="card-header">
-                  <AlertCircle size={20} />
-                  <h3>Skill Gaps</h3>
+              <div className="skills-card" style={{ 
+                background: 'var(--bg-card)', 
+                border: 'none', 
+                boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                padding: '2rem'
+              }}>
+                <div className="card-header" style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <AlertCircle size={24} color="#f43f5e" style={{ filter: 'drop-shadow(0 0 8px rgba(244,63,94,0.5))' }} />
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '0.5px' }}>Skill Gaps</h3>
                 </div>
-                <p className="card-description">
-                  Skills you may want to develop for better opportunities
+                <p className="card-description" style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                  Critical technical missing dependencies holding back your primary domains
                 </p>
-                <div className="skills-list">
+                <div className="skills-list" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
                   {analysis.skill_gaps.map((gap, index) => (
-                    <span key={index} className="skill-tag missing">
+                    <span key={index} className="premium-gap-tag" style={{
+                      background: 'rgba(244, 63, 94, 0.1)',
+                      border: '1px solid rgba(244, 63, 94, 0.3)',
+                      color: '#fecdd3',
+                      padding: '8px 16px',
+                      borderRadius: '20px',
+                      fontSize: '0.9rem',
+                      fontWeight: '600',
+                      letterSpacing: '0.5px',
+                      boxShadow: '0 4px 15px rgba(244, 63, 94, 0.15)',
+                      textTransform: 'capitalize',
+                      transition: 'all 0.3s ease',
+                      cursor: 'default'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 6px 20px rgba(244, 63, 94, 0.3)';
+                      e.currentTarget.style.background = 'rgba(244, 63, 94, 0.2)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 4px 15px rgba(244, 63, 94, 0.15)';
+                      e.currentTarget.style.background = 'rgba(244, 63, 94, 0.1)';
+                    }}>
                       {gap}
                     </span>
                   ))}
@@ -505,16 +917,93 @@ const CandidateDashboard = () => {
               </div>
 
               {/* Learning Path */}
-              <div className="skills-card wide">
-                <div className="card-header">
-                  <BookOpen size={20} />
-                  <h3>Recommended Learning Path</h3>
+              <div className="skills-card wide" style={{ 
+                background: 'var(--bg-card)', 
+                border: 'none', 
+                boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                padding: '2rem'
+              }}>
+                <div className="card-header" style={{ marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <BookOpen size={24} color="#8b5cf6" style={{ filter: 'drop-shadow(0 0 8px rgba(139,92,246,0.5))' }} />
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '0.5px' }}>Recommended Tech Tree</h3>
                 </div>
-                <div className="learning-path">
+                
+                <div className="premium-learning-path" style={{ position: 'relative', paddingLeft: '24px' }}>
+                  {/* Vertical glowing line connecting nodes */}
+                  <div style={{
+                    position: 'absolute',
+                    top: '16px',
+                    bottom: '30px',
+                    left: '24px',
+                    width: '3px',
+                    background: 'linear-gradient(180deg, #8b5cf6, rgba(139, 92, 246, 0.1))',
+                    boxShadow: '0 0 10px rgba(139, 92, 246, 0.8)',
+                    transform: 'translateX(-50%)',
+                    borderRadius: '2px'
+                  }}></div>
+
                   {analysis.learning_path.slice(0, 8).map((skill, index) => (
-                    <div key={index} className="learning-step">
-                      <div className="step-number">{index + 1}</div>
-                      <span className="step-skill">{skill}</span>
+                    <div key={index} className="premium-learning-step" style={{
+                      position: 'relative',
+                      display: 'flex',
+                      alignItems: 'center',
+                      marginBottom: '1.5rem',
+                      background: 'linear-gradient(90deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.6))',
+                      padding: '1.25rem 1.5rem',
+                      borderRadius: '16px',
+                      border: '1px solid rgba(255,255,255,0.03)',
+                      transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.transform = 'translateX(8px)';
+                      e.currentTarget.style.background = 'linear-gradient(90deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9))';
+                      e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.4)';
+                      e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.3)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.transform = 'translateX(0)';
+                      e.currentTarget.style.background = 'linear-gradient(90deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.6))';
+                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.03)';
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}>
+                      {/* Connected Timeline Node Bulb */}
+                      <div className="step-number" style={{
+                        position: 'absolute',
+                        left: '-24px',
+                        transform: 'translateX(-50%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '30px',
+                        height: '30px',
+                        background: '#0f172a',
+                        border: '2px solid #a855f7',
+                        color: '#ddd6fe',
+                        borderRadius: '50%',
+                        fontWeight: 'bold',
+                        fontSize: '0.9rem',
+                        boxShadow: '0 0 15px rgba(168, 85, 247, 0.8), inset 0 0 5px rgba(168, 85, 247, 0.5)',
+                        zIndex: 2,
+                        transition: 'all 0.3s ease'
+                      }}>
+                        {index + 1}
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span className="step-skill" style={{
+                          color: '#f8fafc',
+                          fontWeight: '700',
+                          fontSize: '1.1rem',
+                          letterSpacing: '0.5px',
+                          textTransform: 'uppercase',
+                          textShadow: '0 0 8px rgba(139, 92, 246, 0.3)'
+                        }}>
+                          {skill}
+                        </span>
+                        <span style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '6px', letterSpacing: '0.5px' }}>
+                          Priority Sequence • {index === 0 ? 'Urgent Need' : index < 3 ? 'High Priority' : 'Progressive'}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -527,38 +1016,8 @@ const CandidateDashboard = () => {
         {activeTab === "jobs" && (
           <div className="tab-content">
             {/* Skill Simulation */}
-            <div className="simulation-section">
-              <div className="simulation-header">
-                <div>
-                  <h3>
-                    <Lightbulb size={20} />
-                    What-If Skill Simulation
-                  </h3>
-                  <p>Toggle skills to see how they affect your job match scores</p>
-                </div>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setShowSimulation(!showSimulation)}
-                >
-                  {showSimulation ? "Hide" : "Show"} Simulation
-                </button>
-              </div>
-
-              {showSimulation && analysis && (
-                <div className="simulation-skills">
-                  {analysis.skill_gaps.map((skill, index) => (
-                    <label key={index} className="simulation-skill">
-                      <input
-                        type="checkbox"
-                        checked={simulatedSkills.includes(skill)}
-                        onChange={() => handleSkillSimulation(skill)}
-                      />
-                      <span>{skill}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Skill Simulation */}
+            {renderSimulationBlock()}
 
             {/* Job Listings */}
             <div className="jobs-list">
@@ -635,7 +1094,8 @@ const CandidateDashboard = () => {
               </div>
             ) : (
               <div className="live-jobs-container">
-                <div className="filters-bar" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', alignItems: 'flex-end' }}>
+                {renderSimulationBlock()}
+                <div className="filters-bar" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', alignItems: 'flex-end', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.5rem' }}>
                   <div className="filter-group">
                     <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-secondary)' }}>Job market</label>
                     <select
@@ -717,7 +1177,7 @@ const CandidateDashboard = () => {
                     <div className="live-jobs-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem' }}>
                       {[...liveJobs]
                         .sort((a, b) => {
-                          if (liveJobsSort === 'match') return (b.match_score || 0) - (a.match_score || 0);
+                          if (liveJobsSort === 'match') return (getMatchScore(b) || 0) - (getMatchScore(a) || 0);
                           return b.salary.localeCompare(a.salary); 
                         })
                         .map((job, idx) => (
@@ -729,8 +1189,8 @@ const CandidateDashboard = () => {
                                 {job.company} • {job.location || 'Remote'}
                               </p>
                             </div>
-                            <div className={`match-score ${job.match_score > 70 ? 'high' : job.match_score > 40 ? 'medium' : 'low'}`}>
-                              <span className="score-value">{job.match_score?.toFixed(1) || 0}%</span>
+                            <div className={`match-score ${getMatchScore(job) > 70 ? 'high' : getMatchScore(job) > 40 ? 'medium' : 'low'}`}>
+                              <span className="score-value">{getMatchScore(job)?.toFixed(1) || 0}%</span>
                               <span className="score-label">Match</span>
                             </div>
                           </div>
