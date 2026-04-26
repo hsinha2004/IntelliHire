@@ -29,6 +29,7 @@ import {
   Minus,
 } from "lucide-react";
 import { jobsAPI, aiAPI } from "../services/api";
+import "../Dashboard.css";
 
 const RecruiterDashboard = () => {
   const [user, setUser] = useState(null);
@@ -73,13 +74,16 @@ const RecruiterDashboard = () => {
       navigate("/login");
       return;
     }
-    setUser(JSON.parse(userData));
-    fetchJobs();
+    const parsedUser = JSON.parse(userData);
+    setUser(parsedUser);
+    fetchJobs(parsedUser.id);
   }, [navigate]);
 
-  const fetchJobs = async () => {
+  const fetchJobs = async (userId) => {
     try {
-      const response = await jobsAPI.getAll();
+      const currentUserId = userId || user?.id;
+      if (!currentUserId) return;
+      const response = await jobsAPI.getAll(currentUserId);
       setJobs(response.data);
     } catch (error) {
       console.error("Error fetching jobs:", error);

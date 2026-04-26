@@ -129,6 +129,32 @@ class MatchResponse(BaseModel):
 class ShareResumePayload(BaseModel):
     shared: bool
 
+class ResumeFeedbackRequest(BaseModel):
+    job_id: Optional[str] = None
+    job_description: Optional[str] = None
+
+class BulletRewrite(BaseModel):
+    original: str
+    rewritten: str
+    reason: str
+
+class SectionFeedback(BaseModel):
+    section: str
+    score: int
+    issues: list[str]
+    rewritten: str
+    bullet_rewrites: list[BulletRewrite]
+
+class ResumeFeedbackResponse(BaseModel):
+    overall_score: int
+    overall_summary: str
+    strongest_section: str
+    weakest_section: str
+    tone_feedback: str
+    sections: list[SectionFeedback]
+    top_missing_keywords: list[str]
+    ats_tips: list[str]
+
 # ============== SKILL DATABASE ==============
 
 TECH_SKILLS = {
@@ -432,6 +458,49 @@ class NLPPipeline:
 # Initialize NLP pipeline
 nlp_pipeline = NLPPipeline()
 
+def build_feedback_prompt(resume_text: str, job_description: Optional[str]) -> str:
+    job_ctx = (
+        f"\n\nTARGET JOB DESCRIPTION:\n{job_description}"
+        if job_description
+        else "\n\nNo specific job — give general best-practice feedback."
+    )
+    return f"""You are a senior technical recruiter who has reviewed 10,000+ resumes.
+Be brutally honest and specific. Generic advice like "add metrics" is useless.
+
+RESUME:
+{resume_text}
+{job_ctx}
+
+Return ONLY valid JSON — no markdown, no preamble. Use this exact structure:
+{{
+  "overall_score": <0-100>,
+  "overall_summary": "<2-3 honest sentences: what works, what doesn't>",
+  "strongest_section": "<section name>",
+  "weakest_section": "<section name>",
+  "tone_feedback": "<is writing confident/passive/generic? Quote specific examples>",
+  "sections": [
+    {{
+      "section": "<name>",
+      "score": <0-100>,
+      "issues": ["<quote the weak phrase, explain exactly why it fails>", ...],
+      "rewritten": "<complete improved version, paste-ready, no placeholders>",
+      "bullet_rewrites": [
+        {{
+          "original": "<exact bullet from resume>",
+          "rewritten": "<improved with action verbs and metrics>",
+          "reason": "<one sentence: what changed and why>"
+        }}
+      ]
+    }}
+  ],
+  "top_missing_keywords": ["<term from JD missing in resume>", ...],
+  "ats_tips": ["<concrete actionable tip>", "<tip>", "<tip>", "<tip>"]
+}}
+
+Cover every section present in the resume (minimum: Summary, Experience, Skills).
+bullet_rewrites: pick the 2-3 weakest bullets per section.
+Return ONLY the JSON object, nothing else."""
+
 # ============== API ENDPOINTS ==============
 
 @router.get("/")
@@ -628,6 +697,57 @@ def delete_resume(resume_id: str):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/resumes/{resume_id}/feedback", response_model=ResumeFeedbackResponse)
+async def get_resume_feedback(resume_id: str, body: ResumeFeedbackRequest):
+    # Load resume
+    if not ObjectId.is_valid(resume_id):
+        raise HTTPException(status_code=400, detail="Invalid resume ID format")
+        
+    resume = resumes_collection.find_one({"_id": ObjectId(resume_id)})
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    resume_text = resume.get("extracted_text")
+    if not resume_text:
+        raise HTTPException(status_code=422, detail="Resume has no extracted text")
+
+    # Load job description from DB
+    job_description = body.job_description
+    if not job_description and body.job_id:
+        if ObjectId.is_valid(body.job_id):
+            job = jobs_collection.find_one({"_id": ObjectId(body.job_id)})
+            if job:
+                job_description = job.get("description")
+
+    # Call Groq
+    from groq import Groq
+    import json
+    import os
+    
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY is not set")
+        
+    client = Groq(api_key=api_key)
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": build_feedback_prompt(resume_text, job_description)}],
+            temperature=0.2,
+            response_format={"type": "json_object"}
+        )
+        
+        raw = completion.choices[0].message.content.strip()
+
+        # Try to parse the JSON
+        data = json.loads(raw)
+        return ResumeFeedbackResponse(**data)
+    except json.JSONDecodeError as e:
+        print(f"JSON Parsing Error: {e}, Raw text: {raw}")
+        raise HTTPException(status_code=500, detail="Failed to parse AI response as JSON")
+    except Exception as e:
+        print(f"AI Feedback Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating feedback: {str(e)}")
 
 # ============== JOB ENDPOINTS ==============
 
@@ -659,9 +779,12 @@ def create_job(job: JobCreate, recruiter_id: str):
 
 
 @router.get("/jobs/")
-def get_jobs():
-    """Get all jobs"""
-    jobs = list(jobs_collection.find())
+def get_jobs(recruiter_id: Optional[str] = None):
+    """Get all jobs, optionally filtered by recruiter"""
+    query = {}
+    if recruiter_id:
+        query["recruiter_id"] = recruiter_id
+    jobs = list(jobs_collection.find(query))
     return [
         {
             "job_id": str(j["_id"]),

@@ -23,6 +23,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { resumeAPI, jobsAPI, getLiveJobs } from "../services/api";
+import ResumeFeedback from "../components/ResumeFeedback";
 
 const CandidateDashboard = () => {
   const [user, setUser] = useState(null);
@@ -352,6 +353,14 @@ const CandidateDashboard = () => {
           >
             <Globe size={18} />
             Live Jobs
+          </button>
+          <button
+            className={`tab ${activeTab === "ai_feedback" ? "active" : ""}`}
+            onClick={() => setActiveTab("ai_feedback")}
+            disabled={!analysis}
+          >
+            <Sparkles size={18} />
+            AI Feedback
           </button>
         </div>
 
@@ -1238,6 +1247,16 @@ const CandidateDashboard = () => {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* AI Feedback Tab */}
+        {activeTab === "ai_feedback" && analysis && (
+          <div className="tab-content">
+            <ResumeFeedback
+              resumeId={analysis.resume_id}
+              jobs={recommendations}
+            />
           </div>
         )}
       </div>

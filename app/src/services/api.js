@@ -77,11 +77,13 @@ export const resumeAPI = {
   toggleShare: (resumeId, shared) => api.put(`/resumes/${resumeId}/share`, { shared }),
   
   delete: (resumeId) => api.delete(`/resumes/${resumeId}`),
+
+  getFeedback: (resumeId, data) => api.post(`/resumes/${resumeId}/feedback`, data),
 };
 
 // Jobs API
 export const jobsAPI = {
-  getAll: () => api.get("/jobs/"),
+  getAll: (recruiterId) => api.get(recruiterId ? `/jobs/?recruiter_id=${recruiterId}` : "/jobs/"),
   
   getById: (jobId) => api.get(`/jobs/${jobId}`),
   
