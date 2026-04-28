@@ -205,15 +205,37 @@ const CandidateDashboard = () => {
     }
   };
 
-  const handleToggleShare = async (resumeId, currentSharedStatus) => {
+  const handleApplyToJob = async (jobId) => {
+    if (!analysis?.resume_id) return;
     try {
-      await resumeAPI.toggleShare(resumeId, !currentSharedStatus);
+      await resumeAPI.applyToJob(analysis.resume_id, jobId);
+      setAnalysis({
+        ...analysis,
+        applied_jobs: [...(analysis.applied_jobs || []), jobId]
+      });
       setResumesList(resumesList.map(r => 
-        r.resume_id === resumeId ? { ...r, shared_with_recruiters: !currentSharedStatus } : r
+        r.resume_id === analysis.resume_id ? { ...r, applied_jobs: [...(r.applied_jobs || []), jobId] } : r
       ));
     } catch (error) {
-      console.error("Error toggling share status:", error);
-      alert("Failed to update sharing status. Please try again.");
+      console.error("Error applying to job:", error);
+      alert("Failed to apply. Please try again.");
+    }
+  };
+
+  const handleWithdrawFromJob = async (jobId) => {
+    if (!analysis?.resume_id) return;
+    try {
+      await resumeAPI.withdrawFromJob(analysis.resume_id, jobId);
+      setAnalysis({
+        ...analysis,
+        applied_jobs: (analysis.applied_jobs || []).filter(id => id !== jobId)
+      });
+      setResumesList(resumesList.map(r => 
+        r.resume_id === analysis.resume_id ? { ...r, applied_jobs: (r.applied_jobs || []).filter(id => id !== jobId) } : r
+      ));
+    } catch (error) {
+      console.error("Error withdrawing from job:", error);
+      alert("Failed to withdraw. Please try again.");
     }
   };
 
@@ -259,7 +281,7 @@ const CandidateDashboard = () => {
           <button
             className="btn btn-secondary btn-sm"
             onClick={() => setShowSimulation(!showSimulation)}
-            style={{ padding: '0.4rem 0.8rem', background: "rgba(168, 85, 247, 0.1)", color: "#c084fc", border: "1px solid rgba(168, 85, 247, 0.3)" }}
+            style={{ padding: '0.4rem 0.8rem', background: "rgba(232, 82, 26, 0.08)", color: "var(--primary)", border: "1px solid rgba(232, 82, 26, 0.2)" }}
           >
             {showSimulation ? "Hide" : "Show"} Simulation
           </button>
@@ -270,8 +292,8 @@ const CandidateDashboard = () => {
             {analysis.skill_gaps?.map((skill, index) => (
               <label key={index} className="simulation-skill" style={{
                 display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", 
-                background: simulatedSkills.includes(skill) ? "rgba(168, 85, 247, 0.2)" : "rgba(30, 41, 59, 0.5)", 
-                border: simulatedSkills.includes(skill) ? "1px solid #a855f7" : "1px solid rgba(255,255,255,0.05)",
+                background: simulatedSkills.includes(skill) ? "rgba(232, 82, 26, 0.1)" : "var(--bg-secondary)", 
+                border: simulatedSkills.includes(skill) ? "1px solid var(--primary)" : "1px solid var(--border-primary)",
                 borderRadius: "20px", cursor: "pointer", transition: "all 0.2s"
               }}>
                 <input
@@ -305,10 +327,6 @@ const CandidateDashboard = () => {
               <h1>Candidate Dashboard</h1>
               <p>Welcome back, {user?.name || "Candidate"}</p>
             </div>
-            <div className="header-badge">
-              <Sparkles size={16} />
-              <span>AI Powered</span>
-            </div>
           </div>
         </div>
       </div>
@@ -320,14 +338,12 @@ const CandidateDashboard = () => {
             className={`tab ${activeTab === "overview" ? "active" : ""}`}
             onClick={() => setActiveTab("overview")}
           >
-            <TrendingUp size={18} />
             Overview
           </button>
           <button
             className={`tab ${activeTab === "upload" ? "active" : ""}`}
             onClick={() => setActiveTab("upload")}
           >
-            <Upload size={18} />
             Upload Resume
           </button>
           <button
@@ -335,7 +351,6 @@ const CandidateDashboard = () => {
             onClick={() => setActiveTab("skills")}
             disabled={!analysis}
           >
-            <Brain size={18} />
             Skills Analysis
           </button>
           <button
@@ -343,7 +358,6 @@ const CandidateDashboard = () => {
             onClick={() => setActiveTab("jobs")}
             disabled={recommendations.length === 0}
           >
-            <Briefcase size={18} />
             Job Matches
           </button>
           <button
@@ -351,7 +365,6 @@ const CandidateDashboard = () => {
             onClick={() => setActiveTab("live_jobs")}
             disabled={!analysis}
           >
-            <Globe size={18} />
             Live Jobs
           </button>
           <button
@@ -359,7 +372,6 @@ const CandidateDashboard = () => {
             onClick={() => setActiveTab("ai_feedback")}
             disabled={!analysis}
           >
-            <Sparkles size={18} />
             AI Feedback
           </button>
         </div>
@@ -367,53 +379,36 @@ const CandidateDashboard = () => {
         {/* Overview Tab */}
         {activeTab === "overview" && (
           <div className="tab-content">
-            {/* Stats Cards */}
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-icon blue">
-                  <FileText size={24} />
-                </div>
-                <div className="stat-info">
-                  <h3>{skillProfile?.total_resumes || 0}</h3>
-                  <p>Resumes Uploaded</p>
-                </div>
+            {/* Stats Row */}
+            <div className="stats-row">
+              <div className="stat-item">
+                <h3>{skillProfile?.total_resumes || 0}</h3>
+                <p>Resumes Uploaded</p>
               </div>
-              <div className="stat-card">
-                <div className="stat-icon purple">
-                  <Award size={24} />
-                </div>
-                <div className="stat-info">
-                  <h3>{skillProfile?.all_skills?.length || 0}</h3>
-                  <p>Skills Identified</p>
-                </div>
+              <div className="stat-divider"></div>
+              <div className="stat-item">
+                <h3>{skillProfile?.all_skills?.length || 0}</h3>
+                <p>Skills Identified</p>
               </div>
-              <div className="stat-card">
-                <div className="stat-icon green">
-                  <Target size={24} />
-                </div>
-                <div className="stat-info">
-                  <h3>
-                    {skillProfile?.all_skills?.length > 0
-                      ? Math.round(
-                          Object.values(skillProfile.skill_strengths || {}).reduce(
-                            (a, b) => a + b,
-                            0
-                          ) / Object.values(skillProfile.skill_strengths || {}).length
-                        )
-                      : 0}
-                  %
-                  </h3>
-                  <p>Avg. Skill Strength</p>
-                </div>
+              <div className="stat-divider"></div>
+              <div className="stat-item">
+                <h3>
+                  {skillProfile?.all_skills?.length > 0
+                    ? Math.round(
+                        Object.values(skillProfile.skill_strengths || {}).reduce(
+                          (a, b) => a + b,
+                          0
+                        ) / Object.values(skillProfile.skill_strengths || {}).length
+                      )
+                    : 0}
+                %
+                </h3>
+                <p>Avg. Skill Strength</p>
               </div>
-              <div className="stat-card">
-                <div className="stat-icon orange">
-                  <Briefcase size={24} />
-                </div>
-                <div className="stat-info">
-                  <h3>{recommendations.length}</h3>
-                  <p>Job Matches</p>
-                </div>
+              <div className="stat-divider"></div>
+              <div className="stat-item">
+                <h3>{recommendations.length}</h3>
+                <p>Job Matches</p>
               </div>
             </div>
 
@@ -529,19 +524,6 @@ const CandidateDashboard = () => {
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                           <button
-                            onClick={() => handleToggleShare(r.resume_id, r.shared_with_recruiters)}
-                            style={{ 
-                              display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 0.75rem", borderRadius: "20px", fontSize: "0.8rem", fontWeight: 500, border: "none", cursor: "pointer", transition: "all 0.2s",
-                              background: r.shared_with_recruiters ? "rgba(34, 197, 94, 0.15)" : "rgba(255, 255, 255, 0.05)",
-                              color: r.shared_with_recruiters ? "var(--success)" : "var(--text-secondary)",
-                              boxShadow: r.shared_with_recruiters ? "inset 0 0 10px rgba(34, 197, 94, 0.3)" : "none"
-                            }}
-                            title={r.shared_with_recruiters ? "Currently visible to Recruiters" : "Hidden from Recruiters"}
-                          >
-                            <Globe size={14} />
-                            {r.shared_with_recruiters ? "Shared" : "Private"}
-                          </button>
-                          <button
                             onClick={() => handleDeleteResume(r.resume_id)}
                             disabled={isDeleting === r.resume_id}
                             style={{ background: "transparent", border: "none", color: "var(--error)", cursor: isDeleting === r.resume_id ? "not-allowed" : "pointer", padding: "0.75rem", borderRadius: "var(--radius-md)", opacity: isDeleting === r.resume_id ? 0.5 : 1, transition: "background 0.2s" }}
@@ -565,202 +547,46 @@ const CandidateDashboard = () => {
         {activeTab === "skills" && analysis && (
           <div className="tab-content">
             <div className="skills-grid">
-              {/* Networked Skills Diagram */}
-              <div className="skills-card" style={{ gridColumn: '1 / -1', padding: '1rem', background: 'var(--bg-card)', border: 'none', boxShadow: 'none' }}>
-                <div className="card-header" style={{ marginBottom: '1rem', padding: '0 1rem' }}>
-                  <Brain size={20} color="var(--primary)" />
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>AI Skill Extraction Network</h3>
+              {/* Skill Pill Tags */}
+              <div className="skills-card" style={{ gridColumn: '1 / -1', padding: '2rem', background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-xl)', boxShadow: 'none' }}>
+                <div className="card-header" style={{ marginBottom: '2rem' }}>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>Skill Extraction</h3>
+                  <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Categorized skills extracted from your resume</p>
                 </div>
                 
-                <div className="network-diagram-container" style={{ 
-                  position: 'relative', 
-                  width: '100%', 
-                  height: '600px', 
-                  backgroundColor: '#0f172a',
-                  backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(30, 64, 175, 0.15), transparent 70%), linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)',
-                  backgroundSize: '100% 100%, 30px 30px, 30px 30px',
-                  borderRadius: '24px',
-                  overflow: 'hidden',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  boxShadow: 'inset 0 0 60px rgba(0,0,0,0.5), 0 10px 30px rgba(0,0,0,0.1)'
-                }}>
-                  {/* SVG Background Connecting Lines */}
-                  <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }} viewBox="0 0 100 100" preserveAspectRatio="none">
-                    <defs>
-                      <linearGradient id="lineGrad1" x1="50%" y1="50%" x2="0%" y2="0%">
-                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
-                        <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.2" />
-                      </linearGradient>
-                      <linearGradient id="lineGrad2" x1="50%" y1="50%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
-                        <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.2" />
-                      </linearGradient>
-                      <linearGradient id="lineGrad3" x1="50%" y1="50%" x2="0%" y2="100%">
-                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
-                        <stop offset="100%" stopColor="#10b981" stopOpacity="0.2" />
-                      </linearGradient>
-                      <linearGradient id="lineGrad4" x1="50%" y1="50%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
-                        <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.2" />
-                      </linearGradient>
-                      <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                        <feGaussianBlur stdDeviation="1" result="blur" />
-                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                      </filter>
-                    </defs>
-                    {Object.keys(groupedSkills).map((_, i) => {
-                      if (i >= cloudLayouts.length) return null;
-                      const grads = ["url(#lineGrad1)", "url(#lineGrad2)", "url(#lineGrad3)", "url(#lineGrad4)"];
-                      return (
-                        <path 
-                          key={`path-${i}`}
-                          d={cloudLayouts[i].path} 
-                          fill="none" 
-                          stroke={grads[i % 4]} 
-                          strokeWidth="0.5"
-                          filter="url(#glow)"
-                        />
-                      );
-                    })}
-                  </svg>
-                  
-                  {/* Central Concept Node */}
-                  <div className="central-node" style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    zIndex: 10,
-                    background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)',
-                    padding: '1.5rem',
-                    borderRadius: '50%',
-                    boxShadow: '0 0 0 8px rgba(59, 130, 246, 0.1), 0 0 40px rgba(59, 130, 246, 0.6), inset 0 2px 10px rgba(255,255,255,0.4)',
-                    border: '2px solid rgba(255,255,255,0.8)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '120px',
-                    height: '120px',
-                    textAlign: 'center',
-                    color: '#ffffff'
-                  }}>
-                    <Brain size={32} color="#ffffff" style={{ marginBottom: '0.4rem', filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.8))' }} />
-                    <span style={{ fontSize: '0.65rem', fontWeight: '800', letterSpacing: '1.5px', textShadow: '0 2px 4px rgba(0,0,0,0.5)', textTransform: 'uppercase' }}>AI Core</span>
-                  </div>
-
-                  {/* Cloud Clusters */}
-                  {Object.entries(groupedSkills).map(([category, skills], i) => {
-                    if (i >= cloudLayouts.length) return null;
-                    const layout = cloudLayouts[i];
-                    
-                    return (
-                      <div 
-                        key={category} 
-                        className="skill-cloud"
-                        style={{
-                          position: 'absolute',
-                          top: layout.top,
-                          bottom: layout.bottom,
-                          left: layout.left,
-                          right: layout.right,
-                          zIndex: 5,
-                          background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.9))',
-                          backdropFilter: 'blur(16px)',
-                          WebkitBackdropFilter: 'blur(16px)',
-                          border: '1px solid rgba(255, 255, 255, 0.08)',
-                          borderTop: '1px solid rgba(255, 255, 255, 0.15)',
-                          borderRadius: '24px',
-                          padding: '1.5rem',
-                          maxWidth: '280px',
-                          minWidth: '220px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          boxShadow: '0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1)',
-                          transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-                        }}
-                        onMouseOver={(e) => {
-                          e.currentTarget.style.transform = 'translateY(-5px) scale(1.03)';
-                          e.currentTarget.style.boxShadow = '0 30px 50px rgba(0,0,0,0.6), 0 0 20px rgba(59,130,246,0.2), inset 0 1px 0 rgba(255,255,255,0.2)';
-                        }}
-                        onMouseOut={(e) => {
-                          e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                          e.currentTarget.style.boxShadow = '0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1)';
-                        }}
-                      >
-                        <h4 style={{ 
-                          textAlign: 'center', 
-                          margin: '0 0 1.25rem 0', 
-                          color: '#e2e8f0',
-                          fontSize: '0.75rem',
-                          textTransform: 'uppercase',
-                          letterSpacing: '2px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '8px'
-                        }}>
-                          <span style={{ height: '1px', flex: 1, background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2))' }}></span>
-                          <span style={{ fontWeight: 700, opacity: 0.9 }}>{category}</span>
-                          <span style={{ height: '1px', flex: 1, background: 'linear-gradient(90deg, rgba(255,255,255,0.2), transparent)' }}></span>
-                        </h4>
-                        
-                        <div style={{ 
-                          display: 'flex', 
-                          flexWrap: 'wrap', 
-                          gap: '6px', 
-                          justifyContent: 'center', 
-                          alignItems: 'center' 
-                        }}>
-                          {skills.map((skill, index) => {
-                            const strength = analysis.skill_strength?.[skill] || 50;
-                            const isHigh = strength > 80;
-                            const isMed = strength > 50;
-                            
-                            const minFontSize = 0.75;
-                            const maxFontSize = 1.35;
-                            const fontSize = minFontSize + (strength / 100) * (maxFontSize - minFontSize);
-                            
-                            let skillColor = isHigh ? '#2dd4bf' : isMed ? '#f8fafc' : '#94a3b8';
-                            let skillGlow = isHigh ? '0 0 12px rgba(45, 212, 191, 0.4)' : 'none';
-                            
-                            return (
-                              <span 
-                                key={index} 
-                                style={{ 
-                                  fontSize: `${fontSize}rem`,
-                                  color: skillColor,
-                                  textShadow: skillGlow,
-                                  fontWeight: isHigh ? 700 : isMed ? 500 : 400,
-                                  lineHeight: 1.2,
-                                  padding: '4px 8px',
-                                  background: isHigh ? 'rgba(45, 212, 191, 0.08)' : 'transparent',
-                                  borderRadius: '6px',
-                                  cursor: 'default',
-                                  transition: 'all 0.2s ease',
-                                }}
-                                title={`${skill} (Strength: ${strength}%)`}
-                                onMouseOver={(e) => {
-                                  e.currentTarget.style.color = '#ffffff';
-                                  e.currentTarget.style.transform = 'translateY(-2px)';
-                                  e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
-                                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
-                                }}
-                                onMouseOut={(e) => {
-                                  e.currentTarget.style.color = skillColor;
-                                  e.currentTarget.style.transform = 'translateY(0)';
-                                  e.currentTarget.style.background = isHigh ? 'rgba(45, 212, 191, 0.08)' : 'transparent';
-                                  e.currentTarget.style.boxShadow = 'none';
-                                }}
-                              >
-                                {skill}
-                              </span>
-                            );
-                          })}
-                        </div>
+                <div className="skills-groups">
+                  {Object.entries(groupedSkills).map(([category, skills]) => (
+                    <div key={category} className="skill-group" style={{ marginBottom: '1.5rem' }}>
+                      <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>
+                        {category}
+                      </h4>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        {skills.map((skill, index) => {
+                          const strength = analysis.skill_strength?.[skill] || 50;
+                          return (
+                            <span 
+                              key={index} 
+                              style={{ 
+                                fontSize: '0.875rem',
+                                color: 'var(--text-primary)',
+                                fontWeight: 500,
+                                padding: '0.5rem 1rem',
+                                background: 'var(--bg-card)',
+                                border: '1px solid var(--border-primary)',
+                                borderRadius: '100px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                              }}
+                            >
+                              {skill}
+                              <span style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600 }}>{strength}%</span>
+                            </span>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -1086,6 +912,45 @@ const CandidateDashboard = () => {
                         </div>
                       )}
                     </div>
+
+                    <div className="job-actions" style={{ marginTop: "1.5rem", display: "flex", justifyContent: "flex-end", alignItems: "center", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "1rem" }}>
+                      {analysis?.applied_jobs?.includes(job.job_id) ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            <span style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>Status:</span>
+                            {(() => {
+                              const status = analysis?.application_status?.[job.job_id] || "pending";
+                              let color = "var(--text-secondary)";
+                              if (status === "accepted") color = "var(--success)";
+                              else if (status === "rejected") color = "var(--error)";
+                              else if (status === "shortlisted") color = "var(--warning)";
+                              
+                              return (
+                                <span style={{ fontSize: "0.875rem", fontWeight: 600, padding: "0.25rem 0.75rem", borderRadius: "12px", border: `1px solid ${color}`, color: color, background: `${color}20` }}>
+                                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                                </span>
+                              );
+                            })()}
+                          </div>
+                          
+                          {(!analysis?.application_status?.[job.job_id] || analysis.application_status[job.job_id] === "pending") && (
+                            <button 
+                              onClick={() => handleWithdrawFromJob(job.job_id)}
+                              style={{ padding: "0.5rem 1rem", background: "rgba(239, 68, 68, 0.1)", color: "var(--error)", border: "1px solid rgba(239, 68, 68, 0.3)", borderRadius: "var(--radius-md)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.5rem", transition: "all 0.2s" }}
+                            >
+                              <X size={16} /> Withdraw Application
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => handleApplyToJob(job.job_id)}
+                          style={{ padding: "0.5rem 1.5rem", background: "var(--primary)", color: "white", border: "none", borderRadius: "var(--radius-md)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.5rem", transition: "all 0.2s", fontWeight: 600, boxShadow: "0 4px 15px rgba(139, 92, 246, 0.3)" }}
+                        >
+                          <Briefcase size={16} /> Apply Now
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -1261,51 +1126,39 @@ const CandidateDashboard = () => {
         )}
       </div>
 
-      <style jsx>{`
+      <style>{`
         .dashboard {
           min-height: calc(100vh - 72px);
           background: var(--bg-primary);
         }
 
         .dashboard-header {
-          background: var(--bg-secondary);
+          background: var(--bg-primary);
           border-bottom: 1px solid var(--border-primary);
-          padding: var(--space-xl) 0;
+          padding: var(--space-2xl) 0;
         }
 
         .header-content {
           display: flex;
           justify-content: space-between;
-          align-items: center;
+          align-items: flex-start;
         }
 
         .header-content h1 {
-          font-size: 1.875rem;
-          font-weight: 700;
+          font-size: 2.5rem;
+          font-weight: 800;
+          letter-spacing: -0.03em;
           margin-bottom: var(--space-xs);
         }
 
         .header-content p {
           color: var(--text-secondary);
-        }
-
-        .header-badge {
-          display: flex;
-          align-items: center;
-          gap: var(--space-sm);
-          padding: var(--space-sm) var(--space-md);
-          background: rgba(168, 85, 247, 0.15);
-          border: 1px solid rgba(168, 85, 247, 0.3);
-          border-radius: var(--radius-full);
-          color: var(--secondary-light);
-          font-size: 0.875rem;
-          font-weight: 500;
+          font-size: 0.9rem;
         }
 
         /* Tabs */
         .dashboard-tabs {
           display: flex;
-          gap: var(--space-xs);
           padding: var(--space-lg) 0;
           border-bottom: 1px solid var(--border-primary);
           margin-bottom: var(--space-xl);
@@ -1313,33 +1166,30 @@ const CandidateDashboard = () => {
         }
 
         .tab {
-          display: flex;
-          align-items: center;
-          gap: var(--space-sm);
-          padding: var(--space-sm) var(--space-md);
-          font-size: 0.875rem;
+          padding: var(--space-sm) 0;
+          font-size: 0.9rem;
           font-weight: 500;
           color: var(--text-secondary);
           background: transparent;
           border: none;
-          border-radius: var(--radius-lg);
+          border-bottom: 2px solid transparent;
           cursor: pointer;
           transition: all var(--transition-fast);
           white-space: nowrap;
+          margin-right: var(--space-2xl);
         }
 
         .tab:hover:not(:disabled) {
           color: var(--text-primary);
-          background: var(--bg-tertiary);
         }
 
         .tab.active {
-          color: var(--primary-light);
-          background: rgba(59, 130, 246, 0.15);
+          color: var(--lilac-dark);
+          border-bottom-color: var(--lilac);
         }
 
         .tab:disabled {
-          opacity: 0.5;
+          opacity: 0.4;
           cursor: not-allowed;
         }
 
@@ -1356,54 +1206,45 @@ const CandidateDashboard = () => {
           margin-bottom: var(--space-2xl);
         }
 
-        .stat-card {
+        /* Stats Row */
+        .stats-row {
           display: flex;
           align-items: center;
-          gap: var(--space-md);
+          justify-content: space-between;
           background: var(--bg-card);
           border: 1px solid var(--border-primary);
           border-radius: var(--radius-xl);
-          padding: var(--space-lg);
+          padding: var(--space-2xl);
+          margin-bottom: var(--space-3xl);
+          box-shadow: var(--shadow-md);
         }
 
-        .stat-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: var(--radius-lg);
-          display: flex;
-          align-items: center;
-          justify-content: center;
+        .stat-item {
+          text-align: center;
+          flex: 1;
         }
 
-        .stat-icon.blue {
-          background: rgba(59, 130, 246, 0.15);
-          color: var(--primary);
+        .stat-item h3 {
+          font-size: 2.5rem;
+          font-weight: 800;
+          color: var(--text-primary);
+          margin-bottom: var(--space-xs);
+          letter-spacing: -0.03em;
         }
 
-        .stat-icon.purple {
-          background: rgba(168, 85, 247, 0.15);
-          color: var(--secondary);
-        }
-
-        .stat-icon.green {
-          background: rgba(34, 197, 94, 0.15);
-          color: var(--success);
-        }
-
-        .stat-icon.orange {
-          background: rgba(245, 158, 11, 0.15);
-          color: var(--warning);
-        }
-
-        .stat-info h3 {
-          font-size: 1.5rem;
-          font-weight: 700;
-        }
-
-        .stat-info p {
+        .stat-item p {
           font-size: 0.875rem;
-          color: var(--text-muted);
+          color: var(--text-secondary);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          font-weight: 600;
           margin: 0;
+        }
+
+        .stat-divider {
+          width: 1px;
+          height: 60px;
+          background: var(--border-primary);
         }
 
         /* Quick Actions */
@@ -1424,41 +1265,34 @@ const CandidateDashboard = () => {
         }
 
         .action-card {
-          background: var(--bg-card);
+          background: var(--bg-primary);
           border: 1px solid var(--border-primary);
           border-radius: var(--radius-xl);
-          padding: var(--space-xl);
+          padding: var(--space-2xl);
           cursor: pointer;
-          transition: all var(--transition-normal);
+          transition: all var(--transition-fast);
         }
 
         .action-card:hover {
-          transform: translateY(-4px);
-          border-color: var(--primary);
-          box-shadow: var(--shadow-glow);
+          border-color: rgba(255,255,255,0.2);
+          background: var(--bg-secondary);
         }
 
         .action-icon {
-          width: 56px;
-          height: 56px;
-          background: var(--gradient-primary);
-          border-radius: var(--radius-lg);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
+          color: var(--primary);
           margin-bottom: var(--space-md);
         }
 
         .action-card h3 {
-          font-size: 1.125rem;
+          font-size: 1.25rem;
           font-weight: 600;
           margin-bottom: var(--space-xs);
+          color: var(--text-primary);
         }
 
         .action-card p {
           font-size: 0.875rem;
-          color: var(--text-muted);
+          color: var(--text-secondary);
           margin: 0;
         }
 

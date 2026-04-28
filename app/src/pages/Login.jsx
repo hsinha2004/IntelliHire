@@ -57,33 +57,7 @@ const Login = () => {
   return (
     <div className="auth-page">
       <div className="auth-container">
-        {/* Left Side - Branding */}
-        <div className="auth-branding">
-          <div className="branding-content">
-            <div className="branding-logo">
-              <Brain size={48} />
-            </div>
-            <h1>Welcome Back</h1>
-            <p>
-              Sign in to access your IntelliHire dashboard and continue your 
-              AI-powered recruitment journey.
-            </p>
-            <div className="branding-features">
-              <div className="branding-feature">
-                <div className="feature-dot"></div>
-                <span>AI Resume Analysis</span>
-              </div>
-              <div className="branding-feature">
-                <div className="feature-dot"></div>
-                <span>Smart Candidate Ranking</span>
-              </div>
-              <div className="branding-feature">
-                <div className="feature-dot"></div>
-                <span>Skill Gap Insights</span>
-              </div>
-            </div>
-          </div>
-        </div>
+
 
         {/* Right Side - Form */}
         <div className="auth-form-container">
@@ -106,7 +80,6 @@ const Login = () => {
                   Email Address
                 </label>
                 <div className="input-wrapper">
-                  <Mail size={18} className="input-icon" />
                   <input
                     type="email"
                     id="email"
@@ -126,7 +99,6 @@ const Login = () => {
                   Password
                 </label>
                 <div className="input-wrapper">
-                  <Lock size={18} className="input-icon" />
                   <input
                     type={showPassword ? "text" : "password"}
                     id="password"
@@ -170,10 +142,7 @@ const Login = () => {
                     Signing in...
                   </>
                 ) : (
-                  <>
-                    Sign In
-                    <ArrowRight size={18} />
-                  </>
+                    "Sign In"
                 )}
               </button>
             </form>
@@ -190,7 +159,7 @@ const Login = () => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .auth-page {
           min-height: calc(100vh - 72px);
           display: flex;
@@ -198,91 +167,22 @@ const Login = () => {
 
         .auth-container {
           display: flex;
+          align-items: center;
+          justify-content: center;
           width: 100%;
           min-height: calc(100vh - 72px);
+          background: var(--bg-secondary);
+          padding: var(--space-xl);
         }
 
-        /* Branding Side */
-        .auth-branding {
-          flex: 1;
-          background: var(--gradient-primary);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: var(--space-3xl);
-          position: relative;
-          overflow: hidden;
-        }
-
-        .auth-branding::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-          opacity: 0.5;
-        }
-
-        .branding-content {
-          position: relative;
-          z-index: 1;
-          max-width: 400px;
-          color: white;
-        }
-
-        .branding-logo {
-          width: 80px;
-          height: 80px;
-          background: rgba(255, 255, 255, 0.2);
-          border-radius: var(--radius-xl);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: var(--space-xl);
-          backdrop-filter: blur(10px);
-        }
-
-        .branding-content h1 {
-          font-size: 2.5rem;
-          font-weight: 800;
-          margin-bottom: var(--space-md);
-          color: white;
-        }
-
-        .branding-content p {
-          font-size: 1.125rem;
-          opacity: 0.9;
-          margin-bottom: var(--space-2xl);
-          line-height: 1.6;
-        }
-
-        .branding-features {
-          display: flex;
-          flex-direction: column;
-          gap: var(--space-md);
-        }
-
-        .branding-feature {
-          display: flex;
-          align-items: center;
-          gap: var(--space-md);
-          font-weight: 500;
-        }
-
-        .feature-dot {
-          width: 8px;
-          height: 8px;
-          background: rgba(255, 255, 255, 0.8);
-          border-radius: 50%;
-        }
-
-        /* Form Side */
         .auth-form-container {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: var(--space-2xl);
-          background: var(--bg-primary);
+          width: 100%;
+          max-width: 480px;
+          background: var(--bg-card);
+          border: 1px solid var(--border-primary);
+          border-radius: var(--radius-2xl);
+          padding: 48px;
+          box-shadow: var(--shadow-lg);
         }
 
         .auth-form-wrapper {
@@ -296,9 +196,11 @@ const Login = () => {
         }
 
         .form-header h2 {
-          font-size: 1.875rem;
+          font-size: 2rem;
           font-weight: 700;
           margin-bottom: var(--space-sm);
+          color: var(--text-primary);
+          letter-spacing: -0.02em;
         }
 
         .form-header p {
@@ -310,8 +212,8 @@ const Login = () => {
           align-items: center;
           gap: var(--space-sm);
           padding: var(--space-md);
-          background: rgba(239, 68, 68, 0.1);
-          border: 1px solid rgba(239, 68, 68, 0.3);
+          background: rgba(220, 38, 38, 0.06);
+          border: 1px solid rgba(220, 38, 38, 0.15);
           border-radius: var(--radius-lg);
           color: var(--error);
           font-size: 0.875rem;
@@ -324,22 +226,12 @@ const Login = () => {
           gap: var(--space-lg);
         }
 
+        .form-input {
+          padding: 0.875rem 1rem;
+        }
+
         .input-wrapper {
           position: relative;
-        }
-
-        .input-icon {
-          position: absolute;
-          left: 1rem;
-          top: 50%;
-          transform: translateY(-50%);
-          color: var(--text-muted);
-          pointer-events: none;
-        }
-
-        .form-input {
-          padding-left: 3rem;
-          padding-right: 3rem;
         }
 
         .password-toggle {
@@ -383,7 +275,7 @@ const Login = () => {
         }
 
         .forgot-password {
-          color: var(--primary-light);
+          color: var(--primary);
           font-weight: 500;
         }
 
@@ -408,7 +300,7 @@ const Login = () => {
         }
 
         .form-link {
-          color: var(--primary-light);
+          color: var(--primary);
           font-weight: 600;
         }
 
@@ -416,12 +308,7 @@ const Login = () => {
           text-decoration: underline;
         }
 
-        /* Responsive */
         @media (max-width: 1024px) {
-          .auth-branding {
-            display: none;
-          }
-
           .auth-form-container {
             padding: var(--space-xl);
           }

@@ -27,8 +27,12 @@ import {
   Upload,
   ArrowDownRight,
   Minus,
+  FileText,
+  XCircle,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
-import { jobsAPI, aiAPI } from "../services/api";
+import { jobsAPI, aiAPI, resumeAPI } from "../services/api";
 import "../Dashboard.css";
 
 const RecruiterDashboard = () => {
@@ -40,6 +44,7 @@ const RecruiterDashboard = () => {
   const [showCreateJob, setShowCreateJob] = useState(false);
   const [showEditJob, setShowEditJob] = useState(false);
   const [editingJobId, setEditingJobId] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("all");
   const [editJobForm, setEditJobForm] = useState({
     title: "",
     company: "",
@@ -100,6 +105,27 @@ const RecruiterDashboard = () => {
       console.error("Error fetching candidates:", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleStatusUpdate = async (resumeId, status) => {
+    try {
+      await jobsAPI.updateCandidateStatus(selectedJob.job_id, resumeId, status);
+      setCandidates(candidates.map(c => 
+        c.resume_id === resumeId ? { ...c, status } : c
+      ));
+    } catch (error) {
+      console.error("Error updating status:", error);
+      alert("Failed to update status. Please try again.");
+    }
+  };
+  
+  const getStatusColor = (status) => {
+    switch(status) {
+      case "accepted": return "var(--success)";
+      case "rejected": return "var(--error)";
+      case "shortlisted": return "var(--warning)";
+      default: return "var(--text-secondary)";
     }
   };
 
@@ -243,10 +269,6 @@ const RecruiterDashboard = () => {
               <h1>Recruiter Dashboard</h1>
               <p>Welcome back, {user?.name || "Recruiter"}</p>
             </div>
-            <div className="header-badge">
-              <Sparkles size={16} />
-              <span>AI Powered</span>
-            </div>
           </div>
         </div>
       </div>
@@ -258,7 +280,6 @@ const RecruiterDashboard = () => {
             className={`tab ${activeTab === "jobs" ? "active" : ""}`}
             onClick={() => setActiveTab("jobs")}
           >
-            <Briefcase size={18} />
             Job Postings
           </button>
           <button
@@ -266,14 +287,12 @@ const RecruiterDashboard = () => {
             onClick={() => setActiveTab("candidates")}
             disabled={!selectedJob}
           >
-            <Users size={18} />
             Candidates
           </button>
           <button
             className={`tab ${activeTab === "comparison" ? "active" : ""}`}
             onClick={() => setActiveTab("comparison")}
           >
-            <BarChart3 size={18} />
             Model Comparison
           </button>
         </div>
@@ -281,51 +300,26 @@ const RecruiterDashboard = () => {
         {/* Jobs Tab */}
         {activeTab === "jobs" && (
           <div className="tab-content">
-            {/* Stats */}
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-icon blue">
-                  <Briefcase size={24} />
-                </div>
-                <div className="stat-info">
-                  <h3>{jobs.length}</h3>
-                  <p>Active Jobs</p>
-                </div>
+            {/* Stats Row */}
+            <div className="stats-row">
+              <div className="stat-item">
+                <h3>{jobs.length}</h3>
+                <p>Active Jobs</p>
               </div>
-              <div className="stat-card">
-                <div className="stat-icon purple">
-                  <Users size={24} />
-                </div>
-                <div className="stat-info">
-                  <h3>{candidates.length}</h3>
-                  <p>Total Candidates</p>
-                </div>
+              <div className="stat-divider"></div>
+              <div className="stat-item">
+                <h3>{jobs.reduce((acc, j) => acc + (j.candidates_count || 0), 0)}</h3>
+                <p>Total Candidates</p>
               </div>
-              <div className="stat-card">
-                <div className="stat-icon green">
-                  <TrendingUp size={24} />
-                </div>
-                <div className="stat-info">
-                  <h3>
-                    {candidates.length > 0
-                      ? (
-                          candidates.reduce((acc, c) => acc + c.similarity_score, 0) /
-                          candidates.length
-                        ).toFixed(1)
-                      : 0}
-                  %
-                  </h3>
-                  <p>Avg. Match Score</p>
-                </div>
+              <div className="stat-divider"></div>
+              <div className="stat-item">
+                <h3>N/A</h3>
+                <p>Avg. Match Score</p>
               </div>
-              <div className="stat-card">
-                <div className="stat-icon orange">
-                  <Brain size={24} />
-                </div>
-                <div className="stat-info">
-                  <h3>3</h3>
-                  <p>AI Models</p>
-                </div>
+              <div className="stat-divider"></div>
+              <div className="stat-item">
+                <h3>3</h3>
+                <p>AI Models</p>
               </div>
             </div>
 
@@ -742,11 +736,26 @@ const RecruiterDashboard = () => {
             </div>
 
             {/* Candidates List */}
-            <div className="section-header">
+            <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2>
                 Matched Candidates
                 <span className="candidate-count">({candidates.length})</span>
               </h2>
+              
+              <div className="status-filter">
+                <select 
+                  className="form-select" 
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  style={{ width: 'auto', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)' }}
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="shortlisted">Shortlisted</option>
+                  <option value="accepted">Accepted</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
             </div>
 
             {isLoading ? (
@@ -756,7 +765,9 @@ const RecruiterDashboard = () => {
               </div>
             ) : (
               <div className="candidates-list">
-                {candidates.map((candidate, index) => (
+                {candidates
+                  .filter(c => statusFilter === "all" ? (c.status || "pending") !== "rejected" : (c.status || "pending") === statusFilter)
+                  .map((candidate, index) => (
                   <div key={index} className="candidate-card">
                     <div className="candidate-rank">#{index + 1}</div>
                     <div className="candidate-avatar">
@@ -805,6 +816,55 @@ const RecruiterDashboard = () => {
                           </div>
                         </div>
                       )}
+                    </div>
+                    
+                    {/* Pipeline Actions */}
+                    <div className="candidate-pipeline-actions" style={{ display: "flex", gap: "0.5rem", marginTop: "1.5rem", paddingTop: "1rem", borderTop: "1px solid rgba(255,255,255,0.05)", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <span style={{ fontSize: "0.875rem", color: "var(--text-secondary)", fontWeight: 500 }}>Status:</span>
+                        <span style={{ fontSize: "0.875rem", fontWeight: 600, padding: "0.25rem 0.75rem", borderRadius: "12px", border: `1px solid ${getStatusColor(candidate.status || "pending")}`, color: getStatusColor(candidate.status || "pending"), background: `${getStatusColor(candidate.status || "pending")}20` }}>
+                          {(candidate.status || "pending").charAt(0).toUpperCase() + (candidate.status || "pending").slice(1)}
+                        </span>
+                      </div>
+                      
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <button 
+                          onClick={() => window.open(resumeAPI.getPdfUrl(candidate.resume_id), "_blank")}
+                          style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.8rem", borderRadius: "var(--radius-md)", background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border-primary)", cursor: "pointer", transition: "all 0.2s" }}
+                          onMouseOver={e => e.currentTarget.style.background = "var(--bg-secondary)"}
+                          onMouseOut={e => e.currentTarget.style.background = "var(--bg-tertiary)"}
+                        >
+                          <FileText size={16} /> View CV
+                        </button>
+                        
+                        {(candidate.status || "pending") !== "rejected" && (
+                          <button 
+                            onClick={() => handleStatusUpdate(candidate.resume_id, "rejected")}
+                            title="Reject & Remove Candidate"
+                            style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.8rem", borderRadius: "var(--radius-md)", background: "rgba(239, 68, 68, 0.1)", color: "var(--error)", border: "1px solid rgba(239, 68, 68, 0.3)", cursor: "pointer", transition: "all 0.2s" }}
+                          >
+                            <Trash2 size={16} /> Remove
+                          </button>
+                        )}
+                        
+                        {(candidate.status || "pending") !== "shortlisted" && (
+                          <button 
+                            onClick={() => handleStatusUpdate(candidate.resume_id, "shortlisted")}
+                            style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.8rem", borderRadius: "var(--radius-md)", background: "rgba(245, 158, 11, 0.1)", color: "var(--warning)", border: "1px solid rgba(245, 158, 11, 0.3)", cursor: "pointer", transition: "all 0.2s" }}
+                          >
+                            <Award size={16} /> Shortlist
+                          </button>
+                        )}
+                        
+                        {(candidate.status || "pending") !== "accepted" && (
+                          <button 
+                            onClick={() => handleStatusUpdate(candidate.resume_id, "accepted")}
+                            style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.8rem", borderRadius: "var(--radius-md)", background: "rgba(34, 197, 94, 0.1)", color: "var(--success)", border: "1px solid rgba(34, 197, 94, 0.3)", cursor: "pointer", transition: "all 0.2s" }}
+                          >
+                            <ThumbsUp size={16} /> Accept
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -910,32 +970,34 @@ const RecruiterDashboard = () => {
         )}
       </div>
 
-      <style jsx>{`
+      <style>{`
         .dashboard {
           min-height: calc(100vh - 72px);
           background: var(--bg-primary);
         }
 
         .dashboard-header {
-          background: var(--bg-secondary);
+          background: var(--bg-primary);
           border-bottom: 1px solid var(--border-primary);
-          padding: var(--space-xl) 0;
+          padding: var(--space-2xl) 0;
         }
 
         .header-content {
           display: flex;
           justify-content: space-between;
-          align-items: center;
+          align-items: flex-start;
         }
 
         .header-content h1 {
-          font-size: 1.875rem;
-          font-weight: 700;
+          font-size: 2.5rem;
+          font-weight: 800;
+          letter-spacing: -0.03em;
           margin-bottom: var(--space-xs);
         }
 
         .header-content p {
           color: var(--text-secondary);
+          font-size: 0.9rem;
         }
 
         .header-badge {
@@ -943,10 +1005,10 @@ const RecruiterDashboard = () => {
           align-items: center;
           gap: var(--space-sm);
           padding: var(--space-sm) var(--space-md);
-          background: rgba(168, 85, 247, 0.15);
-          border: 1px solid rgba(168, 85, 247, 0.3);
+          background: var(--lilac-bg);
+          border: 1px solid rgba(155, 142, 196, 0.25);
           border-radius: var(--radius-full);
-          color: var(--secondary-light);
+          color: var(--lilac-dark);
           font-size: 0.875rem;
           font-weight: 500;
         }
@@ -962,33 +1024,30 @@ const RecruiterDashboard = () => {
         }
 
         .tab {
-          display: flex;
-          align-items: center;
-          gap: var(--space-sm);
-          padding: var(--space-sm) var(--space-md);
-          font-size: 0.875rem;
+          padding: var(--space-sm) 0;
+          font-size: 0.9rem;
           font-weight: 500;
           color: var(--text-secondary);
           background: transparent;
           border: none;
-          border-radius: var(--radius-lg);
+          border-bottom: 2px solid transparent;
           cursor: pointer;
           transition: all var(--transition-fast);
           white-space: nowrap;
+          margin-right: var(--space-2xl);
         }
 
         .tab:hover:not(:disabled) {
           color: var(--text-primary);
-          background: var(--bg-tertiary);
         }
 
         .tab.active {
-          color: var(--primary-light);
-          background: rgba(59, 130, 246, 0.15);
+          color: var(--lilac-dark);
+          border-bottom-color: var(--lilac);
         }
 
         .tab:disabled {
-          opacity: 0.5;
+          opacity: 0.4;
           cursor: not-allowed;
         }
 
@@ -997,62 +1056,44 @@ const RecruiterDashboard = () => {
           padding-bottom: var(--space-3xl);
         }
 
-        /* Stats Grid */
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: var(--space-lg);
-          margin-bottom: var(--space-2xl);
-        }
-
-        .stat-card {
+        .stats-row {
           display: flex;
           align-items: center;
-          gap: var(--space-md);
+          justify-content: space-between;
           background: var(--bg-card);
           border: 1px solid var(--border-primary);
           border-radius: var(--radius-xl);
-          padding: var(--space-lg);
+          padding: var(--space-2xl);
+          margin-bottom: var(--space-3xl);
+          box-shadow: var(--shadow-md);
         }
 
-        .stat-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: var(--radius-lg);
-          display: flex;
-          align-items: center;
-          justify-content: center;
+        .stat-item {
+          text-align: center;
+          flex: 1;
         }
 
-        .stat-icon.blue {
-          background: rgba(59, 130, 246, 0.15);
-          color: var(--primary);
+        .stat-item h3 {
+          font-size: 2.5rem;
+          font-weight: 800;
+          color: var(--text-primary);
+          margin-bottom: var(--space-xs);
+          letter-spacing: -0.03em;
         }
 
-        .stat-icon.purple {
-          background: rgba(168, 85, 247, 0.15);
-          color: var(--secondary);
-        }
-
-        .stat-icon.green {
-          background: rgba(34, 197, 94, 0.15);
-          color: var(--success);
-        }
-
-        .stat-icon.orange {
-          background: rgba(245, 158, 11, 0.15);
-          color: var(--warning);
-        }
-
-        .stat-info h3 {
-          font-size: 1.5rem;
-          font-weight: 700;
-        }
-
-        .stat-info p {
+        .stat-item p {
           font-size: 0.875rem;
-          color: var(--text-muted);
+          color: var(--text-secondary);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          font-weight: 600;
           margin: 0;
+        }
+
+        .stat-divider {
+          width: 1px;
+          height: 60px;
+          background: var(--border-primary);
         }
 
         /* Section Header */
@@ -1151,22 +1192,22 @@ const RecruiterDashboard = () => {
         }
 
         .job-card {
-          background: var(--bg-card);
+          background: var(--bg-primary);
           border: 1px solid var(--border-primary);
           border-radius: var(--radius-xl);
-          padding: var(--space-lg);
+          padding: var(--space-2xl);
           cursor: pointer;
           transition: all var(--transition-fast);
         }
 
         .job-card:hover {
-          border-color: var(--primary);
-          box-shadow: var(--shadow-glow);
+          border-color: rgba(255,255,255,0.2);
+          background: var(--bg-secondary);
         }
 
         .job-card.selected {
-          border-color: var(--primary);
-          background: rgba(59, 130, 246, 0.05);
+          border-color: var(--text-primary);
+          background: var(--bg-card);
         }
 
         .job-card-header {
@@ -1363,14 +1404,15 @@ const RecruiterDashboard = () => {
         .candidate-rank {
           width: 32px;
           height: 32px;
-          background: var(--gradient-primary);
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-primary);
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 0.75rem;
           font-weight: 700;
-          color: white;
+          color: var(--text-primary);
           flex-shrink: 0;
         }
 

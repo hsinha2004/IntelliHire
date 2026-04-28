@@ -94,27 +94,7 @@ const Register = () => {
   return (
     <div className="auth-page">
       <div className="auth-container">
-        {/* Left Side - Branding */}
-        <div className="auth-branding">
-          <div className="branding-content">
-            <div className="branding-logo">
-              <Brain size={48} />
-            </div>
-            <h1>Get Started</h1>
-            <p>
-              Join IntelliHire today and experience the future of AI-powered 
-              recruitment. Find your dream job or the perfect candidate.
-            </p>
-            <div className="branding-features">
-              {features.map((feature, index) => (
-                <div key={index} className="branding-feature">
-                  <feature.icon size={20} />
-                  <span>{feature.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+
 
         {/* Right Side - Form */}
         <div className="auth-form-container">
@@ -147,9 +127,7 @@ const Register = () => {
                       onChange={handleChange}
                       disabled={isLoading}
                     />
-                    <UserCircle size={24} />
                     <span>Candidate</span>
-                    <p>Looking for jobs</p>
                   </label>
                   <label 
                     className={`role-option ${formData.role === "recruiter" ? "active" : ""}`}
@@ -162,9 +140,7 @@ const Register = () => {
                       onChange={handleChange}
                       disabled={isLoading}
                     />
-                    <Briefcase size={24} />
                     <span>Recruiter</span>
-                    <p>Hiring talent</p>
                   </label>
                 </div>
               </div>
@@ -174,7 +150,6 @@ const Register = () => {
                   Full Name
                 </label>
                 <div className="input-wrapper">
-                  <User size={18} className="input-icon" />
                   <input
                     type="text"
                     id="name"
@@ -194,7 +169,6 @@ const Register = () => {
                   Email Address
                 </label>
                 <div className="input-wrapper">
-                  <Mail size={18} className="input-icon" />
                   <input
                     type="email"
                     id="email"
@@ -215,7 +189,6 @@ const Register = () => {
                     Password
                   </label>
                   <div className="input-wrapper">
-                    <Lock size={18} className="input-icon" />
                     <input
                       type={showPassword ? "text" : "password"}
                       id="password"
@@ -244,7 +217,6 @@ const Register = () => {
                     Confirm Password
                   </label>
                   <div className="input-wrapper">
-                    <Lock size={18} className="input-icon" />
                     <input
                       type={showConfirmPassword ? "text" : "password"}
                       id="confirmPassword"
@@ -291,10 +263,7 @@ const Register = () => {
                     Creating account...
                   </>
                 ) : (
-                  <>
-                    Create Account
-                    <ArrowRight size={18} />
-                  </>
+                    "Create Account"
                 )}
               </button>
             </form>
@@ -311,7 +280,7 @@ const Register = () => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .auth-page {
           min-height: calc(100vh - 72px);
           display: flex;
@@ -319,89 +288,22 @@ const Register = () => {
 
         .auth-container {
           display: flex;
+          align-items: center;
+          justify-content: center;
           width: 100%;
           min-height: calc(100vh - 72px);
+          background: var(--bg-secondary);
+          padding: var(--space-xl);
         }
 
-        /* Branding Side */
-        .auth-branding {
-          flex: 1;
-          background: var(--gradient-primary);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: var(--space-3xl);
-          position: relative;
-          overflow: hidden;
-        }
-
-        .auth-branding::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-          opacity: 0.5;
-        }
-
-        .branding-content {
-          position: relative;
-          z-index: 1;
-          max-width: 400px;
-          color: white;
-        }
-
-        .branding-logo {
-          width: 80px;
-          height: 80px;
-          background: rgba(255, 255, 255, 0.2);
-          border-radius: var(--radius-xl);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: var(--space-xl);
-          backdrop-filter: blur(10px);
-        }
-
-        .branding-content h1 {
-          font-size: 2.5rem;
-          font-weight: 800;
-          margin-bottom: var(--space-md);
-          color: white;
-        }
-
-        .branding-content p {
-          font-size: 1.125rem;
-          opacity: 0.9;
-          margin-bottom: var(--space-2xl);
-          line-height: 1.6;
-        }
-
-        .branding-features {
-          display: flex;
-          flex-direction: column;
-          gap: var(--space-md);
-        }
-
-        .branding-feature {
-          display: flex;
-          align-items: center;
-          gap: var(--space-md);
-          font-weight: 500;
-        }
-
-        .branding-feature svg {
-          color: rgba(255, 255, 255, 0.9);
-        }
-
-        /* Form Side */
         .auth-form-container {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: var(--space-2xl);
-          background: var(--bg-primary);
-          overflow-y: auto;
+          width: 100%;
+          max-width: 520px;
+          background: var(--bg-card);
+          border: 1px solid var(--border-primary);
+          border-radius: var(--radius-2xl);
+          padding: 48px;
+          box-shadow: var(--shadow-lg);
         }
 
         .auth-form-wrapper {
@@ -415,9 +317,11 @@ const Register = () => {
         }
 
         .form-header h2 {
-          font-size: 1.875rem;
+          font-size: 2rem;
           font-weight: 700;
           margin-bottom: var(--space-sm);
+          color: var(--text-primary);
+          letter-spacing: -0.02em;
         }
 
         .form-header p {
@@ -429,8 +333,8 @@ const Register = () => {
           align-items: center;
           gap: var(--space-sm);
           padding: var(--space-md);
-          background: rgba(239, 68, 68, 0.1);
-          border: 1px solid rgba(239, 68, 68, 0.3);
+          background: rgba(220, 38, 38, 0.06);
+          border: 1px solid rgba(220, 38, 38, 0.15);
           border-radius: var(--radius-lg);
           color: var(--error);
           font-size: 0.875rem;
@@ -443,76 +347,44 @@ const Register = () => {
           gap: var(--space-lg);
         }
 
-        /* Role Selection */
         .role-selection {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: var(--space-md);
+          display: flex;
+          gap: var(--space-sm);
+          background: var(--bg-secondary);
+          padding: 4px;
+          border-radius: var(--radius-md);
         }
 
         .role-option {
+          flex: 1;
           display: flex;
-          flex-direction: column;
           align-items: center;
-          gap: var(--space-sm);
-          padding: var(--space-lg);
-          background: var(--bg-secondary);
-          border: 2px solid var(--border-primary);
-          border-radius: var(--radius-lg);
+          justify-content: center;
+          padding: var(--space-sm) var(--space-md);
+          border-radius: var(--radius-sm);
           cursor: pointer;
           transition: all var(--transition-fast);
-          text-align: center;
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: var(--text-secondary);
         }
 
         .role-option input {
           display: none;
         }
 
-        .role-option svg {
-          color: var(--text-muted);
-          transition: color var(--transition-fast);
-        }
-
-        .role-option span {
-          font-weight: 600;
-          color: var(--text-primary);
-        }
-
-        .role-option p {
-          font-size: 0.75rem;
-          color: var(--text-muted);
-          margin: 0;
-        }
-
-        .role-option:hover {
-          border-color: var(--border-secondary);
-        }
-
         .role-option.active {
-          border-color: var(--primary);
-          background: rgba(59, 130, 246, 0.1);
+          background: var(--bg-card);
+          color: var(--text-primary);
+          box-shadow: var(--shadow-sm);
         }
 
-        .role-option.active svg {
-          color: var(--primary);
+        .form-input {
+          padding: 0.875rem 1rem;
         }
 
         .input-wrapper {
           position: relative;
-        }
-
-        .input-icon {
-          position: absolute;
-          left: 1rem;
-          top: 50%;
-          transform: translateY(-50%);
-          color: var(--text-muted);
-          pointer-events: none;
-        }
-
-        .form-input {
-          padding-left: 3rem;
-          padding-right: 3rem;
         }
 
         .password-toggle {
@@ -577,7 +449,7 @@ const Register = () => {
         }
 
         .form-link {
-          color: var(--primary-light);
+          color: var(--primary);
           font-weight: 600;
         }
 
@@ -585,12 +457,7 @@ const Register = () => {
           text-decoration: underline;
         }
 
-        /* Responsive */
         @media (max-width: 1024px) {
-          .auth-branding {
-            display: none;
-          }
-
           .auth-form-container {
             padding: var(--space-xl);
           }

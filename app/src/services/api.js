@@ -74,10 +74,14 @@ export const resumeAPI = {
   
   getSkillProfile: (userId) => api.get(`/users/${userId}/skill-profile`),
   
-  toggleShare: (resumeId, shared) => api.put(`/resumes/${resumeId}/share`, { shared }),
+  applyToJob: (resumeId, jobId) => api.post(`/resumes/${resumeId}/apply/${jobId}`),
+  
+  withdrawFromJob: (resumeId, jobId) => api.post(`/resumes/${resumeId}/withdraw/${jobId}`),
   
   delete: (resumeId) => api.delete(`/resumes/${resumeId}`),
 
+  getPdfUrl: (resumeId) => `${API_BASE_URL}/resumes/${resumeId}/pdf`,
+  
   getFeedback: (resumeId, data) => api.post(`/resumes/${resumeId}/feedback`, data),
 };
 
@@ -107,6 +111,9 @@ export const jobsAPI = {
       },
     });
   },
+  
+  updateCandidateStatus: (jobId, resumeId, status) => 
+    api.put(`/jobs/${jobId}/candidates/${resumeId}/status`, { status }),
 };
 
 // Matching API

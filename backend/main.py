@@ -5,7 +5,7 @@ Backend API with FastAPI (MongoDB Migration)
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel
@@ -19,12 +19,18 @@ import os
 from dotenv import load_dotenv
 import httpx
 import asyncio
+from cachetools import cached, TTLCache
+import hashlib
 
 load_dotenv()
 from collections import Counter
 import uuid
 from pymongo import MongoClient
 from bson import ObjectId
+
+# Create explicit caches so we can invalidate them
+jobs_cache = TTLCache(maxsize=100, ttl=300)
+candidates_cache = TTLCache(maxsize=100, ttl=60)
 
 # Create FastAPI app
 app = FastAPI(title="IntelliHire API", version="1.0.0")
@@ -50,6 +56,7 @@ users_collection = db["users"]
 resumes_collection = db["resumes"]
 jobs_collection = db["jobs"]
 matches_collection = db["matches"]
+ai_feedback_cache = db["ai_feedback_cache"]
 
 # Ensure upload directory exists
 UPLOAD_DIR = "./uploads"
@@ -125,9 +132,6 @@ class MatchResponse(BaseModel):
     similarity_score: float
     matched_skills: List[str]
     missing_skills: List[str]
-
-class ShareResumePayload(BaseModel):
-    shared: bool
 
 class ResumeFeedbackRequest(BaseModel):
     job_id: Optional[str] = None
@@ -613,7 +617,7 @@ async def upload_resume(
         "skill_strength": skill_strength,
         "skill_gaps": recommendations,
         "learning_path": learning_path,
-        "shared_with_recruiters": False,
+        "applied_jobs": [],
         "created_at": datetime.utcnow()
     }
     result = resumes_collection.insert_one(resume_doc)
@@ -644,7 +648,8 @@ def get_resume(resume_id: str):
         "skill_strength": resume.get("skill_strength"),
         "skill_gaps": resume.get("skill_gaps"),
         "learning_path": resume.get("learning_path"),
-        "shared_with_recruiters": resume.get("shared_with_recruiters", False),
+        "applied_jobs": resume.get("applied_jobs", []),
+        "application_status": resume.get("application_status", {}),
         "created_at": resume.get("created_at")
     }
 
@@ -659,26 +664,51 @@ def get_user_resumes(user_id: str):
             "filename": r["filename"],
             "skills": r.get("skills"),
             "skill_strength": r.get("skill_strength"),
-            "shared_with_recruiters": r.get("shared_with_recruiters", False),
+            "applied_jobs": r.get("applied_jobs", []),
+            "application_status": r.get("application_status", {}),
             "created_at": r.get("created_at")
         }
         for r in resumes
     ]
 
-@router.put("/resumes/{resume_id}/share")
-def toggle_resume_share(resume_id: str, payload: ShareResumePayload):
-    """Toggle resume sharing status"""
-    if not ObjectId.is_valid(resume_id):
-        raise HTTPException(status_code=400, detail="Invalid resume ID format")
+@router.post("/resumes/{resume_id}/apply/{job_id}")
+def apply_to_job(resume_id: str, job_id: str):
+    """Apply to a job using a resume"""
+    if not ObjectId.is_valid(resume_id) or not ObjectId.is_valid(job_id):
+        raise HTTPException(status_code=400, detail="Invalid ID format")
     
     result = resumes_collection.update_one(
         {"_id": ObjectId(resume_id)},
-        {"$set": {"shared_with_recruiters": payload.shared}}
+        {
+            "$addToSet": {"applied_jobs": job_id},
+            "$set": {f"application_status.{job_id}": "pending"}
+        }
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Resume not found")
         
-    return {"message": "Sharing status updated", "shared": payload.shared}
+    candidates_cache.clear()
+    jobs_cache.clear()
+        
+    return {"message": "Successfully applied to job", "applied": True}
+
+@router.post("/resumes/{resume_id}/withdraw/{job_id}")
+def withdraw_from_job(resume_id: str, job_id: str):
+    """Withdraw application from a job"""
+    if not ObjectId.is_valid(resume_id) or not ObjectId.is_valid(job_id):
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+    
+    result = resumes_collection.update_one(
+        {"_id": ObjectId(resume_id)},
+        {"$pull": {"applied_jobs": job_id}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Resume not found")
+        
+    candidates_cache.clear()
+    jobs_cache.clear()
+        
+    return {"message": "Successfully withdrawn from job", "applied": False}
 
 @router.delete("/resumes/{resume_id}")
 def delete_resume(resume_id: str):
@@ -691,11 +721,27 @@ def delete_resume(resume_id: str):
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Resume not found")
             
+        candidates_cache.clear()
+        jobs_cache.clear()
+            
         return {"message": "Resume deleted successfully"}
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/resumes/{resume_id}/pdf")
+def get_resume_pdf(resume_id: str):
+    """Serve the raw PDF file for viewing"""
+    if not ObjectId.is_valid(resume_id):
+        raise HTTPException(status_code=400, detail="Invalid resume ID format")
+    resume = resumes_collection.find_one({"_id": ObjectId(resume_id)})
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    file_path = resume.get("file_path")
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="PDF file not found on server")
+    return FileResponse(file_path, media_type="application/pdf", filename=resume.get("filename", "resume.pdf"))
 
 @router.post("/resumes/{resume_id}/feedback", response_model=ResumeFeedbackResponse)
 async def get_resume_feedback(resume_id: str, body: ResumeFeedbackRequest):
@@ -719,9 +765,20 @@ async def get_resume_feedback(resume_id: str, body: ResumeFeedbackRequest):
             if job:
                 job_description = job.get("description")
 
+    # Check Groq Cache
+    import hashlib
+    import json
+    
+    prompt_str = f"resume:{resume_text}|job:{job_description}"
+    prompt_hash = hashlib.sha256(prompt_str.encode('utf-8')).hexdigest()
+    
+    cached_feedback = ai_feedback_cache.find_one({"_id": prompt_hash})
+    if cached_feedback:
+        print(f"CACHE HIT: Returning Groq feedback from MongoDB for {resume_id}")
+        return ResumeFeedbackResponse(**cached_feedback["data"])
+
     # Call Groq
     from groq import Groq
-    import json
     import os
     
     api_key = os.environ.get("GROQ_API_KEY")
@@ -741,6 +798,15 @@ async def get_resume_feedback(resume_id: str, body: ResumeFeedbackRequest):
 
         # Try to parse the JSON
         data = json.loads(raw)
+        
+        # Save to Cache
+        ai_feedback_cache.insert_one({
+            "_id": prompt_hash,
+            "data": data,
+            "resume_id": resume_id,
+            "created_at": datetime.utcnow()
+        })
+        
         return ResumeFeedbackResponse(**data)
     except json.JSONDecodeError as e:
         print(f"JSON Parsing Error: {e}, Raw text: {raw}")
@@ -779,25 +845,41 @@ def create_job(job: JobCreate, recruiter_id: str):
 
 
 @router.get("/jobs/")
+@cached(cache=jobs_cache)
 def get_jobs(recruiter_id: Optional[str] = None):
     """Get all jobs, optionally filtered by recruiter"""
     query = {}
     if recruiter_id:
         query["recruiter_id"] = recruiter_id
     jobs = list(jobs_collection.find(query))
-    return [
-        {
-            "job_id": str(j["_id"]),
+    response = []
+    for j in jobs:
+        job_id_str = str(j["_id"])
+        candidates_count = resumes_collection.count_documents({
+            "$and": [
+                {
+                    "$or": [
+                        {"applied_jobs": job_id_str},
+                        {"job_id": job_id_str}
+                    ]
+                },
+                {
+                    f"application_status.{job_id_str}": {"$ne": "rejected"}
+                }
+            ]
+        })
+        response.append({
+            "job_id": job_id_str,
             "title": j["title"],
             "company": j["company"],
             "description": j.get("description", "")[:200] + "...",
             "location": j.get("location"),
             "job_type": j.get("job_type"),
             "experience_required": j.get("experience_required"),
-            "required_skills": j.get("required_skills", [])
-        }
-        for j in jobs
-    ]
+            "required_skills": j.get("required_skills", []),
+            "candidates_count": candidates_count
+        })
+    return response
 
 
 @router.get("/jobs/{job_id}")
@@ -840,6 +922,7 @@ def update_job(job_id: str, job_update: JobUpdate):
             {"_id": ObjectId(job_id)},
             {"$set": update_data}
         )
+        jobs_cache.clear()
         
     updated_job = jobs_collection.find_one({"_id": ObjectId(job_id)})
     
@@ -861,6 +944,15 @@ def delete_job(job_id: str):
         
     # Also clean up any matches associated with this job
     matches_collection.delete_many({"job_id": job_id})
+    
+    # Clean up applied_jobs references in resumes
+    resumes_collection.update_many(
+        {"applied_jobs": job_id},
+        {"$pull": {"applied_jobs": job_id}}
+    )
+    
+    jobs_cache.clear()
+    candidates_cache.clear()
         
     return {"message": "Job deleted successfully"}
 
@@ -948,16 +1040,17 @@ async def upload_recruiter_candidates(job_id: str, files: List[UploadFile] = Fil
     return {"message": f"Successfully uploaded {len(uploaded)} candidates", "inserted_ids": uploaded}
 
 @router.get("/jobs/{job_id}/candidates")
+@cached(cache=candidates_cache)
 def get_matching_candidates(job_id: str, min_score: float = 0.0):
     """Get matching candidates for a job"""
     job = jobs_collection.find_one({"_id": ObjectId(job_id)})
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Only fetch candidates who consented, or those directly uploaded by recruiter for this job
+    # Only fetch candidates who applied, or those directly uploaded by recruiter for this job
     resumes = list(resumes_collection.find({
         "$or": [
-            {"shared_with_recruiters": True},
+            {"applied_jobs": job_id},
             {"job_id": job_id}
         ]
     }))
@@ -971,6 +1064,7 @@ def get_matching_candidates(job_id: str, min_score: float = 0.0):
             job.get("required_skills", [])
         )
 
+        status = resume.get("application_status", {}).get(job_id, "pending")
         if match_result["similarity_score"] >= min_score:
             matches.append({
                 "resume_id": str(resume["_id"]),
@@ -978,7 +1072,8 @@ def get_matching_candidates(job_id: str, min_score: float = 0.0):
                 "filename": resume.get("filename"),
                 "similarity_score": match_result["similarity_score"],
                 "matched_skills": match_result["matched_skills"],
-                "missing_skills": match_result["missing_skills"]
+                "missing_skills": match_result["missing_skills"],
+                "status": status
             })
 
     matches.sort(key=lambda x: x["similarity_score"], reverse=True)
@@ -988,6 +1083,31 @@ def get_matching_candidates(job_id: str, min_score: float = 0.0):
         "job_title": job.get("title"),
         "candidates": matches
     }
+
+class StatusUpdateRequest(BaseModel):
+    status: str
+
+@router.put("/jobs/{job_id}/candidates/{resume_id}/status")
+def update_candidate_status(job_id: str, resume_id: str, request: StatusUpdateRequest):
+    """Update candidate pipeline status"""
+    if not ObjectId.is_valid(resume_id) or not ObjectId.is_valid(job_id):
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+        
+    valid_statuses = ["pending", "shortlisted", "accepted", "rejected"]
+    if request.status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of {valid_statuses}")
+        
+    result = resumes_collection.update_one(
+        {"_id": ObjectId(resume_id)},
+        {"$set": {f"application_status.{job_id}": request.status}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Resume not found")
+        
+    candidates_cache.clear()
+    
+    return {"message": "Status updated successfully", "status": request.status}
 
 
 @router.get("/resumes/{resume_id}/recommendations")
@@ -1028,6 +1148,7 @@ def get_job_recommendations(resume_id: str):
 # ============== ANALYTICS ENDPOINTS ==============
 
 @router.get("/analytics/skills")
+@cached(cache=TTLCache(maxsize=1, ttl=300))
 def get_skill_analytics():
     """Get overall skill analytics"""
     all_resumes = list(resumes_collection.find())

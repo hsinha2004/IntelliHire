@@ -1,21 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { 
-  Brain, 
-  Home, 
-  LogIn, 
-  UserPlus, 
-  User, 
-  Briefcase, 
-  LogOut,
-  Menu,
-  X
-} from "lucide-react";
+import { Menu, X } from "lucide-react";
 
 const Navbar = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -33,6 +24,12 @@ const Navbar = () => {
     }
   }, [location]);
 
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 10);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -42,35 +39,31 @@ const Navbar = () => {
   };
 
   const navLinks = [
-    { path: "/", label: "Home", icon: Home },
+    { path: "/", label: "Home" },
     ...(!isAuthenticated
       ? [
-          { path: "/login", label: "Login", icon: LogIn },
-          { path: "/register", label: "Register", icon: UserPlus },
+          { path: "/login", label: "Login" },
+          { path: "/register", label: "Register" },
         ]
       : []),
     ...(isAuthenticated && userRole === "candidate"
-      ? [{ path: "/candidate", label: "Dashboard", icon: User }]
+      ? [{ path: "/candidate", label: "Dashboard" }]
       : []),
     ...(isAuthenticated && userRole === "recruiter"
-      ? [{ path: "/recruiter", label: "Dashboard", icon: Briefcase }]
+      ? [{ path: "/recruiter", label: "Dashboard" }]
       : []),
   ];
 
   const isActive = (path) => location.pathname === path;
 
   return (
-    <nav className="navbar">
+    <nav className={`navbar ${scrolled ? "scrolled" : ""}`}>
       <div className="navbar-container">
-        {/* Logo */}
         <Link to="/" className="navbar-logo">
-          <div className="logo-icon">
-            <Brain size={28} />
-          </div>
+          <img src="/logo.png" alt="IntelliHire" className="logo-img" />
           <span className="logo-text">IntelliHire</span>
         </Link>
 
-        {/* Desktop Navigation */}
         <div className="navbar-links desktop">
           {navLinks.map((link) => (
             <Link
@@ -78,20 +71,17 @@ const Navbar = () => {
               to={link.path}
               className={`nav-link ${isActive(link.path) ? "active" : ""}`}
             >
-              <link.icon size={18} />
               <span>{link.label}</span>
             </Link>
           ))}
-          
+
           {isAuthenticated && (
             <button onClick={handleLogout} className="nav-link logout">
-              <LogOut size={18} />
               <span>Logout</span>
             </button>
           )}
         </div>
 
-        {/* Mobile Menu Button */}
         <button
           className="mobile-menu-btn"
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -100,7 +90,6 @@ const Navbar = () => {
         </button>
       </div>
 
-      {/* Mobile Navigation */}
       {isMobileMenuOpen && (
         <div className="navbar-links mobile">
           {navLinks.map((link) => (
@@ -110,28 +99,33 @@ const Navbar = () => {
               className={`nav-link ${isActive(link.path) ? "active" : ""}`}
               onClick={() => setIsMobileMenuOpen(false)}
             >
-              <link.icon size={18} />
               <span>{link.label}</span>
             </Link>
           ))}
-          
+
           {isAuthenticated && (
             <button onClick={handleLogout} className="nav-link logout">
-              <LogOut size={18} />
               <span>Logout</span>
             </button>
           )}
         </div>
       )}
 
-      <style jsx="true">{`
+      <style>{`
         .navbar {
           position: sticky;
           top: 0;
           z-index: 1000;
-          background: rgba(15, 15, 35, 0.95);
-          backdrop-filter: blur(10px);
-          border-bottom: 1px solid var(--border-primary);
+          background: rgba(250, 250, 248, 0.85);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-bottom: 1px solid transparent;
+          transition: all var(--transition-normal);
+        }
+
+        .navbar.scrolled {
+          border-bottom-color: var(--border-primary);
+          box-shadow: 0 1px 8px rgba(0,0,0,0.04);
         }
 
         .navbar-container {
@@ -147,29 +141,21 @@ const Navbar = () => {
         .navbar-logo {
           display: flex;
           align-items: center;
-          gap: var(--space-sm);
+          gap: 10px;
           text-decoration: none;
         }
 
-        .logo-icon {
-          width: 42px;
-          height: 42px;
-          background: var(--gradient-primary);
-          border-radius: var(--radius-lg);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          box-shadow: var(--shadow-glow);
+        .logo-img {
+          width: 32px;
+          height: 32px;
+          object-fit: contain;
         }
 
         .logo-text {
-          font-size: 1.5rem;
-          font-weight: 800;
-          background: var(--gradient-primary);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
+          font-size: 1.125rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          letter-spacing: -0.01em;
         }
 
         .navbar-links {
@@ -186,7 +172,7 @@ const Navbar = () => {
           display: none;
           flex-direction: column;
           padding: var(--space-md);
-          background: var(--bg-secondary);
+          background: var(--bg-card);
           border-top: 1px solid var(--border-primary);
         }
 
@@ -196,32 +182,31 @@ const Navbar = () => {
           gap: var(--space-sm);
           padding: 0.625rem 1rem;
           font-size: 0.875rem;
-          font-weight: 500;
+          font-weight: 400;
           color: var(--text-secondary);
           text-decoration: none;
-          border-radius: var(--radius-lg);
-          transition: all var(--transition-fast);
+          transition: color var(--transition-fast);
           background: none;
           border: none;
           cursor: pointer;
+          font-family: inherit;
         }
 
         .nav-link:hover {
           color: var(--text-primary);
-          background: var(--bg-tertiary);
         }
 
         .nav-link.active {
-          color: var(--primary-light);
-          background: rgba(59, 130, 246, 0.15);
+          color: var(--lilac-dark);
+          font-weight: 600;
         }
 
         .nav-link.logout {
-          color: var(--error);
+          color: var(--text-muted);
         }
 
         .nav-link.logout:hover {
-          background: rgba(239, 68, 68, 0.15);
+          color: var(--error);
         }
 
         .mobile-menu-btn {
@@ -235,7 +220,7 @@ const Navbar = () => {
         }
 
         .mobile-menu-btn:hover {
-          background: var(--bg-tertiary);
+          background: var(--bg-hover);
         }
 
         @media (max-width: 768px) {
