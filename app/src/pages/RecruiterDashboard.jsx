@@ -769,100 +769,105 @@ const RecruiterDashboard = () => {
                   .filter(c => statusFilter === "all" ? (c.status || "pending") !== "rejected" : (c.status || "pending") === statusFilter)
                   .map((candidate, index) => (
                   <div key={index} className="candidate-card">
-                    <div className="candidate-rank">#{index + 1}</div>
-                    <div className="candidate-avatar">
-                      {candidate.filename.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="candidate-info">
-                      <h4>Candidate #{candidate.resume_id}</h4>
-                      <p>{candidate.filename}</p>
-                    </div>
-                    <div className="candidate-score">
-                      <div
-                        className="score-circle"
-                        style={{
-                          background: getScoreBg(candidate.similarity_score),
-                          color: getScoreColor(candidate.similarity_score),
-                        }}
-                      >
-                        <span>{candidate.similarity_score.toFixed(1)}%</span>
+                    <div className="candidate-left-content">
+                      <div className="candidate-rank">#{index + 1}</div>
+                      <div className="candidate-avatar">
+                        {candidate.filename.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="candidate-info">
+                        <h4>Candidate #{candidate.resume_id.substring(0, 8)}</h4>
+                        <p className="line-clamp-2">{candidate.filename}</p>
+                      </div>
+                      <div className="candidate-score">
+                        <div
+                          className="score-circle"
+                          style={{
+                            background: getScoreBg(candidate.similarity_score),
+                            color: getScoreColor(candidate.similarity_score),
+                          }}
+                        >
+                          <span>{candidate.similarity_score.toFixed(1)}%</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="candidate-skills">
-                      <div className="skills-matched">
-                        <span className="skills-label">Matched</span>
-                        <div className="skills-tags">
-                          {candidate.matched_skills.slice(0, 4).map((skill, idx) => (
-                            <span key={idx} className="skill-tag matched">
-                              {skill}
-                            </span>
-                          ))}
-                          {candidate.matched_skills.length > 4 && (
-                            <span className="skill-tag more">
-                              +{candidate.matched_skills.length - 4}
-                            </span>
+                    
+                    <div className="candidate-right-content">
+                      {/* Pipeline Actions */}
+                      <div className="candidate-pipeline-actions">
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <span style={{ fontSize: "0.875rem", color: "var(--text-secondary)", fontWeight: 500 }}>Status:</span>
+                          <span style={{ fontSize: "0.875rem", fontWeight: 600, padding: "0.25rem 0.75rem", borderRadius: "12px", border: `1px solid ${getStatusColor(candidate.status || "pending")}`, color: getStatusColor(candidate.status || "pending"), background: `${getStatusColor(candidate.status || "pending")}20` }}>
+                            {(candidate.status || "pending").charAt(0).toUpperCase() + (candidate.status || "pending").slice(1)}
+                          </span>
+                        </div>
+                        
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <button 
+                            onClick={() => window.open(resumeAPI.getPdfUrl(candidate.resume_id), "_blank")}
+                            style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.8rem", borderRadius: "var(--radius-md)", background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border-primary)", cursor: "pointer", transition: "all 0.2s" }}
+                            onMouseOver={e => e.currentTarget.style.background = "var(--bg-secondary)"}
+                            onMouseOut={e => e.currentTarget.style.background = "var(--bg-tertiary)"}
+                          >
+                            <FileText size={16} /> View CV
+                          </button>
+                          
+                          {(candidate.status || "pending") !== "rejected" && (
+                            <button 
+                              onClick={() => handleStatusUpdate(candidate.resume_id, "rejected")}
+                              title="Reject & Remove Candidate"
+                              style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.8rem", borderRadius: "var(--radius-md)", background: "rgba(239, 68, 68, 0.1)", color: "var(--error)", border: "1px solid rgba(239, 68, 68, 0.3)", cursor: "pointer", transition: "all 0.2s" }}
+                            >
+                              <Trash2 size={16} /> Remove
+                            </button>
+                          )}
+                          
+                          {(candidate.status || "pending") !== "shortlisted" && (
+                            <button 
+                              onClick={() => handleStatusUpdate(candidate.resume_id, "shortlisted")}
+                              style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.8rem", borderRadius: "var(--radius-md)", background: "rgba(245, 158, 11, 0.1)", color: "var(--warning)", border: "1px solid rgba(245, 158, 11, 0.3)", cursor: "pointer", transition: "all 0.2s" }}
+                            >
+                              <Award size={16} /> Shortlist
+                            </button>
+                          )}
+                          
+                          {(candidate.status || "pending") !== "accepted" && (
+                            <button 
+                              onClick={() => handleStatusUpdate(candidate.resume_id, "accepted")}
+                              style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.8rem", borderRadius: "var(--radius-md)", background: "rgba(34, 197, 94, 0.1)", color: "var(--success)", border: "1px solid rgba(34, 197, 94, 0.3)", cursor: "pointer", transition: "all 0.2s" }}
+                            >
+                              <ThumbsUp size={16} /> Accept
+                            </button>
                           )}
                         </div>
                       </div>
-                      {candidate.missing_skills.length > 0 && (
-                        <div className="skills-missing">
-                          <span className="skills-label">Missing</span>
+
+                      <div className="candidate-skills">
+                        <div className="skills-matched">
+                          <span className="skills-label">Matched</span>
                           <div className="skills-tags">
-                            {candidate.missing_skills.slice(0, 3).map((skill, idx) => (
-                              <span key={idx} className="skill-tag missing">
+                            {candidate.matched_skills.slice(0, 4).map((skill, idx) => (
+                              <span key={idx} className="skill-tag matched">
                                 {skill}
                               </span>
                             ))}
+                            {candidate.matched_skills.length > 4 && (
+                              <span className="skill-tag more">
+                                +{candidate.matched_skills.length - 4}
+                              </span>
+                            )}
                           </div>
                         </div>
-                      )}
-                    </div>
-                    
-                    {/* Pipeline Actions */}
-                    <div className="candidate-pipeline-actions" style={{ display: "flex", gap: "0.5rem", marginTop: "1.5rem", paddingTop: "1rem", borderTop: "1px solid rgba(255,255,255,0.05)", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <span style={{ fontSize: "0.875rem", color: "var(--text-secondary)", fontWeight: 500 }}>Status:</span>
-                        <span style={{ fontSize: "0.875rem", fontWeight: 600, padding: "0.25rem 0.75rem", borderRadius: "12px", border: `1px solid ${getStatusColor(candidate.status || "pending")}`, color: getStatusColor(candidate.status || "pending"), background: `${getStatusColor(candidate.status || "pending")}20` }}>
-                          {(candidate.status || "pending").charAt(0).toUpperCase() + (candidate.status || "pending").slice(1)}
-                        </span>
-                      </div>
-                      
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
-                        <button 
-                          onClick={() => window.open(resumeAPI.getPdfUrl(candidate.resume_id), "_blank")}
-                          style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.8rem", borderRadius: "var(--radius-md)", background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border-primary)", cursor: "pointer", transition: "all 0.2s" }}
-                          onMouseOver={e => e.currentTarget.style.background = "var(--bg-secondary)"}
-                          onMouseOut={e => e.currentTarget.style.background = "var(--bg-tertiary)"}
-                        >
-                          <FileText size={16} /> View CV
-                        </button>
-                        
-                        {(candidate.status || "pending") !== "rejected" && (
-                          <button 
-                            onClick={() => handleStatusUpdate(candidate.resume_id, "rejected")}
-                            title="Reject & Remove Candidate"
-                            style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.8rem", borderRadius: "var(--radius-md)", background: "rgba(239, 68, 68, 0.1)", color: "var(--error)", border: "1px solid rgba(239, 68, 68, 0.3)", cursor: "pointer", transition: "all 0.2s" }}
-                          >
-                            <Trash2 size={16} /> Remove
-                          </button>
-                        )}
-                        
-                        {(candidate.status || "pending") !== "shortlisted" && (
-                          <button 
-                            onClick={() => handleStatusUpdate(candidate.resume_id, "shortlisted")}
-                            style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.8rem", borderRadius: "var(--radius-md)", background: "rgba(245, 158, 11, 0.1)", color: "var(--warning)", border: "1px solid rgba(245, 158, 11, 0.3)", cursor: "pointer", transition: "all 0.2s" }}
-                          >
-                            <Award size={16} /> Shortlist
-                          </button>
-                        )}
-                        
-                        {(candidate.status || "pending") !== "accepted" && (
-                          <button 
-                            onClick={() => handleStatusUpdate(candidate.resume_id, "accepted")}
-                            style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.8rem", borderRadius: "var(--radius-md)", background: "rgba(34, 197, 94, 0.1)", color: "var(--success)", border: "1px solid rgba(34, 197, 94, 0.3)", cursor: "pointer", transition: "all 0.2s" }}
-                          >
-                            <ThumbsUp size={16} /> Accept
-                          </button>
+                        {candidate.missing_skills.length > 0 && (
+                          <div className="skills-missing">
+                            <span className="skills-label">Missing</span>
+                            <div className="skills-tags">
+                              {candidate.missing_skills.slice(0, 3).map((skill, idx) => (
+                                <span key={idx} className="skill-tag missing">
+                                  {skill}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>

@@ -10,6 +10,10 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel
 import pdfplumber
+import easyocr
+import fitz  # PyMuPDF — pure-Python PDF renderer, no system binary needed
+from PIL import Image
+import io
 import re
 import numpy as np
 from sentence_transformers import SentenceTransformer, util
@@ -21,6 +25,12 @@ import httpx
 import asyncio
 from cachetools import cached, TTLCache
 import hashlib
+from functools import lru_cache
+
+# Configurable threshold for BERT semantic skill matching.
+# Skills with cosine similarity >= this value are considered semantically equivalent.
+# Tune between 0.70 (lenient) and 0.85 (strict). Default 0.65 balances precision/recall.
+SEMANTIC_SIMILARITY_THRESHOLD = 0.65
 
 load_dotenv()
 from collections import Counter
@@ -190,7 +200,71 @@ TECH_SKILLS = {
 
     # Tools & Others
     "git", "linux", "agile", "scrum", "jira", "confluence", "figma", "sketch",
-    "photoshop", "illustrator", "tableau", "power bi"
+    "photoshop", "illustrator", "tableau", "power bi",
+
+    # --- Accounting & Finance ---
+    "accounting", "bookkeeping", "financial reporting", "tally", "quickbooks",
+    "taxation", "auditing", "balance sheet", "gst", "tds", "ifrs", "gaap",
+    "financial modeling", "budgeting", "forecasting", "investment analysis",
+    "accounts payable", "accounts receivable", "payroll", "cost accounting",
+    "sap", "erp", "ms excel", "excel",
+
+    # --- Banking ---
+    "banking", "kyc", "aml", "credit analysis", "core banking", "finacle",
+    "compliance", "loan processing", "risk management", "trade finance",
+    "anti-money laundering", "financial products", "treasury",
+
+    # --- HR ---
+    "recruitment", "talent acquisition", "hr management", "employee relations",
+    "hrms", "labor law", "performance management", "onboarding", "training",
+    "compensation", "hris", "organizational development", "succession planning",
+
+    # --- Civil & Mechanical Engineering ---
+    "autocad", "structural design", "construction management", "revit", "staad pro",
+    "ms project", "civil engineering", "surveying", "site management",
+    "mechanical engineering", "solidworks", "catia", "ansys",
+
+    # --- SAP ---
+    "sap abap", "sap hana", "sap fiori", "s4hana", "sap basis", "sap mm",
+    "sap fi", "sap sd", "sap bw", "sap crm",
+
+    # --- .NET / Microsoft Stack ---
+    "asp.net", "dotnet", ".net", "entity framework", "sql server", "wpf",
+    "winforms", "visual studio", "c#", "azure devops",
+
+    # --- Digital Media & Marketing ---
+    "seo", "sem", "social media", "content creation", "google analytics",
+    "canva", "adobe", "photoshop", "illustrator", "indesign", "email marketing",
+    "copywriting", "brand management", "digital marketing",
+
+    # --- Network & Security ---
+    "network security", "firewall", "penetration testing", "siem",
+    "vulnerability assessment", "cissp", "ceh", "wireshark", "tcp/ip",
+    "ethical hacking", "cybersecurity", "network administration", "vpn",
+
+    # --- Sales & Business ---
+    "sales", "crm", "salesforce", "lead generation", "b2b", "b2c",
+    "hubspot", "business development", "account management", "customer success",
+
+    # --- QA / Testing ---
+    "selenium", "manual testing", "automation testing", "testng", "junit",
+    "api testing", "istqb", "cucumber", "postman", "performance testing",
+
+    # --- Business Analysis ---
+    "business analysis", "requirements gathering", "process mapping", "uml",
+    "stakeholder management", "user stories", "gap analysis",
+
+    # --- ETL & Data Engineering ---
+    "etl", "informatica", "ssis", "talend", "pentaho", "data warehouse",
+    "spark", "hadoop", "hive", "airflow", "data pipeline",
+
+    # --- Agriculture ---
+    "crop management", "soil science", "irrigation", "agronomy", "fertilizers",
+    "pest control", "farm management", "precision agriculture",
+
+    # --- Blockchain ---
+    "blockchain", "solidity", "ethereum", "web3", "smart contracts",
+    "cryptocurrency", "defi", "nft", "hyperledger",
 }
 
 SOFT_SKILLS = {
@@ -202,6 +276,30 @@ SOFT_SKILLS = {
 
 ALL_SKILLS = TECH_SKILLS.union(SOFT_SKILLS)
 
+ALIAS_MAP = {
+    "reactjs": "react",
+    "react.js": "react",
+    "nodejs": "nodejs",
+    "node.js": "nodejs",
+    "node": "nodejs",
+    "py": "python",
+    "ts": "typescript",
+    "js": "javascript",
+    "sklearn": "scikit-learn",
+    "sk-learn": "scikit-learn",
+    "tf": "tensorflow",
+    "tensorflow2": "tensorflow",
+    "postgres": "postgresql",
+    "pg": "postgresql",
+    "k8s": "kubernetes",
+    "mongo": "mongodb",
+    "aws": "aws",
+    "gcp": "gcp",
+    "vue.js": "vue",
+    "vuejs": "vue",
+    "next.js": "nextjs"
+}
+
 # Domain maps for accurate skill gap analysis
 DOMAIN_SKILLS = {
     "data science": ["python", "sql", "statistics", "pandas", "numpy", "machine learning", "tableau", "power bi", "r", "scikit-learn", "data analysis"],
@@ -212,11 +310,14 @@ DOMAIN_SKILLS = {
     "mobile": ["react native", "flutter", "swift", "kotlin", "ios", "android", "javascript"]
 }
 
-# Skill dependencies for learning path generation
+# Skill dependencies for learning path generation AND semantic matching fallback.
+# When BERT cosine similarity for short skill names is too low to trigger a
+# semantic match, the dependency graph provides a 0.5 partial-credit fallback.
 SKILL_DEPENDENCIES = {
     "machine learning": ["python", "statistics"],
-    "deep learning": ["machine learning", "python", "tensorflow"],
+    "deep learning": ["machine learning", "python", "tensorflow", "pytorch", "keras"],
     "data science": ["python", "statistics", "sql", "pandas"],
+    "data analysis": ["python", "pandas", "sql", "statistics", "r"],
     "full stack": ["html", "css", "javascript", "react", "nodejs"],
     "devops": ["linux", "docker", "aws"],
     "cloud": ["aws", "azure", "gcp", "linux"],
@@ -226,14 +327,43 @@ SKILL_DEPENDENCIES = {
     "react": ["javascript", "html", "css"],
     "angular": ["typescript", "html", "css"],
     "vue": ["javascript", "html", "css"],
-    "nodejs": ["javascript", "backend"],
+    "nodejs": ["javascript", "express"],
     "django": ["python", "backend"],
-    "tensorflow": ["python", "machine learning"],
+    "tensorflow": ["python", "machine learning", "keras"],
     "pytorch": ["python", "machine learning"],
-    "pandas": ["python"],
+    "pandas": ["python", "data analysis"],
     "numpy": ["python"],
-    "kubernetes": ["docker", "linux"]
+    "kubernetes": ["docker", "linux"],
+    # SQL family — any SQL database implies SQL competence
+    "sql": ["mysql", "postgresql", "sqlite"],
+    "mysql": ["sql"],
+    "postgresql": ["sql"],
+    "sqlite": ["sql"],
+    # NoSQL family
+    "mongodb": ["nosql"],
+    # Framework → parent relationships
+    "express": ["nodejs", "javascript"],
+    "flask": ["python"],
+    "fastapi": ["python"],
+    "spring": ["java"],
+    "keras": ["tensorflow", "python"],
+    "scikit-learn": ["python", "machine learning"],
 }
+
+# Bidirectional semantic skill groups — skills in the same group are treated
+# as semantically equivalent during matching (0.85 partial credit).  This
+# covers pairs where BERT single-word cosine is unreliable.
+SEMANTIC_SKILL_GROUPS = [
+    {"mysql", "sql", "postgresql", "sqlite"},           # SQL family
+    {"tensorflow", "keras"},                             # TF ecosystem
+    {"pytorch", "tensorflow"},                           # DL frameworks
+    {"pandas", "data analysis"},                         # Data tooling
+    {"express", "nodejs"},                               # Node ecosystem
+    {"react", "frontend"},                               # Frontend frameworks
+    {"angular", "frontend"},
+    {"vue", "frontend"},
+    {"mongodb", "nosql"},                                # NoSQL family
+]
 
 # ============== NLP PIPELINE ==============
 
@@ -241,9 +371,210 @@ class NLPPipeline:
     def __init__(self):
         # Load a pre-trained BERT model optimized for semantic text similarity
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        # Pre-compute embeddings for every known skill at startup (run once)
+        self.skill_embeddings = {}
+        self._precompute_skill_embeddings()
+        # OCR reader is lazy-loaded on first use to avoid startup overhead
+        self._ocr_reader = None
+
+    # ------------------------------------------------------------------
+    # Startup: pre-compute & cache embeddings for ALL known skills
+    # ------------------------------------------------------------------
+    def _precompute_skill_embeddings(self):
+        """Encode every skill in ALL_SKILLS once at startup and store the
+        tensor so we never re-encode the fixed dictionary on every request."""
+        skills = list(ALL_SKILLS)
+        embeddings = self.model.encode(skills, convert_to_tensor=True)
+        for skill, embedding in zip(skills, embeddings):
+            self.skill_embeddings[skill] = embedding
+        print(f"Pre-computed embeddings for {len(skills)} skills.")
+
+    # ------------------------------------------------------------------
+    # Per-skill embedding with LRU cache (for candidate / ad-hoc skills)
+    # ------------------------------------------------------------------
+    @staticmethod
+    @lru_cache(maxsize=512)
+    def _get_skill_embedding_cached(skill: str):
+        """Cache individual skill embeddings to avoid recomputation.
+        Uses the global nlp_pipeline instance (set after __init__)."""
+        # We reach for the global instance here because lru_cache cannot
+        # cache bound methods (self makes every call unique).
+        return nlp_pipeline.model.encode(skill, convert_to_tensor=True)
+
+    def get_skill_embedding(self, skill: str):
+        """Return embedding for *skill*. Uses pre-computed dict first,
+        falls back to the LRU-cached encoder for unknown skills."""
+        if skill in self.skill_embeddings:
+            return self.skill_embeddings[skill]
+        return NLPPipeline._get_skill_embedding_cached(skill)
+
+    # ------------------------------------------------------------------
+    # Semantic skill matcher
+    # ------------------------------------------------------------------
+    def find_semantic_skill_matches(self, candidate_skill: str,
+                                    threshold: float = SEMANTIC_SIMILARITY_THRESHOLD) -> List[Dict]:
+        """Given a skill string, find all semantically similar skills in
+        ALL_SKILLS using BERT cosine similarity.
+
+        threshold controls match sensitivity:
+          - MySQL  ↔ SQL            → ~0.82 → MATCH ✅
+          - MySQL  ↔ React          → ~0.21 → NO MATCH ✅
+          - TensorFlow ↔ Deep Learning → ~0.79 → MATCH ✅
+          - Python ↔ JavaScript     → ~0.45 → NO MATCH ✅
+
+        Returns list of {"skill": str, "similarity": float}.
+        """
+        cand_emb = self.get_skill_embedding(candidate_skill)
+        matched = []
+        for skill, skill_emb in self.skill_embeddings.items():
+            sim = util.cos_sim(cand_emb, skill_emb).item()
+            if sim >= threshold:
+                matched.append({"skill": skill, "similarity": round(sim, 4)})
+        return matched
+
+    # ------------------------------------------------------------------
+    # Semantic skill match ratio (replaces exact-only matching)
+    # ------------------------------------------------------------------
+    def calculate_semantic_skill_match(
+        self,
+        required_skills: set,
+        candidate_skills: set,
+        threshold: float = SEMANTIC_SIMILARITY_THRESHOLD
+    ) -> Dict[str, Any]:
+        """For each required skill, check:
+        1. Exact match in candidate_skills         → score = 1.0
+        2. Semantic match via BERT cosine sim       → score = similarity
+        3. Related-skill bonus via SKILL_DEPENDENCIES → score = 0.5
+        4. No match                                 → score = 0.0
+
+        Returns {"skill_match_ratio": float, "matched_skills": list,
+                 "missing_skills": list, "match_details": list}.
+        """
+        total_score = 0.0
+        match_details = []
+        matched_skills = []
+        missing_skills = []
+
+        for req_skill in required_skills:
+            # --- Fast path: exact match ---
+            if req_skill in candidate_skills:
+                total_score += 1.0
+                matched_skills.append(req_skill)
+                match_details.append({
+                    "required": req_skill,
+                    "matched_with": req_skill,
+                    "match_type": "exact",
+                    "score": 1.0
+                })
+                continue
+
+            # --- BERT semantic fallback ---
+            best_match = None
+            best_sim = 0.0
+            req_emb = self.get_skill_embedding(req_skill)
+
+            for cand_skill in candidate_skills:
+                cand_emb = self.get_skill_embedding(cand_skill)
+                sim = util.cos_sim(cand_emb, req_emb).item()
+                if sim > best_sim:
+                    best_sim = sim
+                    best_match = cand_skill
+
+            if best_sim >= threshold:
+                total_score += best_sim  # partial credit
+                matched_skills.append(req_skill)
+                match_details.append({
+                    "required": req_skill,
+                    "matched_with": best_match,
+                    "match_type": "semantic",
+                    "score": round(best_sim, 4)
+                })
+                continue
+
+            # --- Semantic skill group fallback (0.85 partial credit) ---
+            # Catches pairs like PostgreSQL↔SQL, Pandas↔Data Analysis where
+            # BERT single-word cosine is unreliable but domain equivalence is known.
+            group_match = None
+            for group in SEMANTIC_SKILL_GROUPS:
+                if req_skill in group:
+                    for cand_skill in candidate_skills:
+                        if cand_skill in group and cand_skill != req_skill:
+                            group_match = cand_skill
+                            break
+                if group_match:
+                    break
+
+            if group_match:
+                total_score += 0.85
+                matched_skills.append(req_skill)
+                match_details.append({
+                    "required": req_skill,
+                    "matched_with": group_match,
+                    "match_type": "semantic_group",
+                    "score": 0.85
+                })
+                continue
+
+            # --- Dependency-graph fallback (0.5 partial credit) ---
+            if req_skill in SKILL_DEPENDENCIES:
+                deps = SKILL_DEPENDENCIES[req_skill]
+                if any(dep in candidate_skills for dep in deps):
+                    total_score += 0.5
+                    dep_match = next(dep for dep in deps if dep in candidate_skills)
+                    matched_skills.append(req_skill)
+                    match_details.append({
+                        "required": req_skill,
+                        "matched_with": dep_match,
+                        "match_type": "dependency",
+                        "score": 0.5
+                    })
+                    continue
+
+            # --- No match ---
+            missing_skills.append(req_skill)
+            match_details.append({
+                "required": req_skill,
+                "matched_with": None,
+                "match_type": "none",
+                "score": 0.0
+            })
+
+        # Use 80%-threshold denominator so 8/10 skills = full credit
+        if len(required_skills) > 0:
+            ratio = min(1.0, total_score / (len(required_skills) * 0.8))
+        else:
+            ratio = 0.0
+
+        return {
+            "skill_match_ratio": round(ratio, 4),
+            "matched_skills": matched_skills,
+            "missing_skills": missing_skills,
+            "match_details": match_details
+        }
+
+    def normalize_aliases(self, text: str) -> str:
+        """Apply ALIAS_MAP substitutions using case-insensitive regex word boundaries"""
+        normalized = text
+        for alias, target in sorted(ALIAS_MAP.items(), key=lambda x: len(x[0]), reverse=True):
+            pattern = r'(?<![a-zA-Z0-9])' + re.escape(alias) + r'(?![a-zA-Z0-9])'
+            normalized = re.sub(pattern, target, normalized, flags=re.IGNORECASE)
+        return normalized
+
+    def _get_ocr_reader(self):
+        """Lazy-load EasyOCR reader once on first use (avoids ~3 s startup cost)."""
+        if self._ocr_reader is None:
+            print("Loading EasyOCR model (first scanned PDF detected)...")
+            self._ocr_reader = easyocr.Reader(['en'], gpu=False, verbose=False)
+        return self._ocr_reader
 
     def extract_text_from_pdf(self, file_path: str) -> str:
-        """Extract text from PDF using pdfplumber"""
+        """Extract text from PDF.
+
+        Strategy:
+          1. Try pdfplumber for fast text-layer extraction (works for digital PDFs).
+          2. If that yields < 50 chars (scanned image PDF), fall back to EasyOCR
+             which rasterises each page and runs a neural OCR model.
+        """
         text = ""
         try:
             with pdfplumber.open(file_path) as pdf:
@@ -252,7 +583,30 @@ class NLPPipeline:
                     if page_text:
                         text += page_text + "\n"
         except Exception as e:
-            print(f"Error extracting PDF: {e}")
+            print(f"pdfplumber error: {e}")
+
+        # OCR fallback for scanned / image-only PDFs
+        if len(text.strip()) < 50:
+            try:
+                print(f"  [OCR] No text layer in {file_path!r} — running EasyOCR")
+                reader = self._get_ocr_reader()
+                # Use PyMuPDF (fitz) to render each page to a PIL Image
+                doc = fitz.open(file_path)
+                ocr_parts = []
+                for page in doc:
+                    # Render at 2x zoom (144 dpi equivalent) for better OCR accuracy
+                    mat = fitz.Matrix(2, 2)
+                    pix = page.get_pixmap(matrix=mat)
+                    img = Image.open(io.BytesIO(pix.tobytes("png")))
+                    img_np = np.array(img)
+                    results = reader.readtext(img_np, detail=0, paragraph=True)
+                    ocr_parts.append(" ".join(results))
+                doc.close()
+                text = "\n".join(ocr_parts)
+                print(f"  [OCR] Extracted {len(text)} chars via EasyOCR")
+            except Exception as e:
+                print(f"  [OCR] Failed for {file_path!r}: {e}")
+
         return text
 
     def preprocess_text(self, text: str) -> str:
@@ -297,6 +651,7 @@ class NLPPipeline:
 
     def extract_skills(self, text: str) -> List[str]:
         """Extract skills from text using keyword matching"""
+        text = self.normalize_aliases(text)
         text_lower = text.lower()
         found_skills = set()
 
@@ -309,6 +664,7 @@ class NLPPipeline:
 
     def calculate_skill_strength(self, text: str, skills: List[str]) -> Dict[str, float]:
         """Calculate skill strength based on frequency and context"""
+        text = self.normalize_aliases(text)
         sections = self.extract_sections(text)
         strength_scores = {}
 
@@ -389,29 +745,78 @@ class NLPPipeline:
             return 0.0
 
     def match_resume_to_job(self, resume_text: str, job_description: str,
-                            resume_skills: List[str], job_skills: List[str]) -> Dict[str, Any]:
-        """Match resume to job description"""
+                            resume_skills: List[str], job_skills: List[str],
+                            job_title: str = "") -> Dict[str, Any]:
+        """Match resume to job description using BERT semantic skill matching.
+
+        Scoring breakdown:
+          - 60 %  Semantic skill match ratio (exact → BERT → dependency fallback)
+          - 40 %  Full-text semantic similarity (BERT cosine of resume vs JD)
+          - +8 %  Job title keyword found in resume header / summary
+          - +5 %  Seniority level alignment (junior / mid / senior)
+          - ×0.3  Penalty multiplier when skill_match_ratio is exactly 0
+        """
+        # 1. Text Similarity (40% weight)
         text_similarity = self.calculate_similarity(resume_text, job_description)
 
+        # 2. Semantic Skill Match Ratio (60% weight)
         resume_skills_lower = set(s.lower() for s in resume_skills)
         job_skills_lower = set(s.lower() for s in job_skills)
 
-        matched_skills = list(resume_skills_lower.intersection(job_skills_lower))
-        missing_skills = list(job_skills_lower - resume_skills_lower)
+        semantic_result = self.calculate_semantic_skill_match(
+            job_skills_lower, resume_skills_lower
+        )
+        skill_match_ratio = semantic_result["skill_match_ratio"]
+        matched_skills = semantic_result["matched_skills"]
+        missing_skills = semantic_result["missing_skills"]
+        match_details = semantic_result["match_details"]
 
-        if len(job_skills) > 0:
-            skill_match_ratio = len(matched_skills) / len(job_skills)
-        else:
-            skill_match_ratio = 0
+        combined_score = (text_similarity * 0.4) + (skill_match_ratio * 0.6)
 
-        combined_score = (text_similarity * 0.5) + (skill_match_ratio * 0.5)
+        # 3. Job Title Match Bonus (+0.08)
+        sections = self.extract_sections(resume_text)
+        header_summary = (sections.get("header", "") + " " + sections.get("summary", "")).lower()
+        title_match_bonus = 0.0
+        if job_title:
+            job_title_words = [w for w in re.findall(r'\b\w+\b', job_title.lower()) if len(w) > 2]
+            if job_title_words and any(word in header_summary for word in job_title_words):
+                title_match_bonus = 0.08
+                combined_score += title_match_bonus
+
+        # 4. Seniority Alignment Bonus (+0.05)
+        seniority_levels = {
+            "junior": ["junior", "jr", "entry", "fresher", "intern", "associate"],
+            "mid": ["mid", "intermediate"],
+            "senior": ["senior", "sr", "lead", "principal", "manager", "director", "head"]
+        }
+        resume_seniority = None
+        job_seniority = None
+        full_resume_lower = resume_text.lower()
+        full_job_lower = (job_title + " " + job_description).lower()
+        for level, keywords in seniority_levels.items():
+            if any(r'\b' + kw + r'\b' in full_resume_lower for kw in keywords):
+                resume_seniority = level
+            if any(r'\b' + kw + r'\b' in full_job_lower for kw in keywords):
+                job_seniority = level
+        seniority_bonus = 0.0
+        if resume_seniority and job_seniority and resume_seniority == job_seniority:
+            seniority_bonus = 0.05
+            combined_score += seniority_bonus
+
+        # 5. Irrelevant Match Penalty
+        if skill_match_ratio == 0.0:
+            combined_score *= 0.3
+
+        # Clamp between 0.0 and 1.0
+        combined_score = max(0.0, min(1.0, combined_score))
 
         return {
             "similarity_score": round(combined_score * 100, 2),
             "text_similarity": round(text_similarity * 100, 2),
             "skill_match_ratio": round(skill_match_ratio * 100, 2),
             "matched_skills": matched_skills,
-            "missing_skills": missing_skills
+            "missing_skills": missing_skills,
+            "match_details": match_details
         }
 
     def build_skill_graph(self, skills: List[str]) -> nx.DiGraph:
@@ -595,6 +1000,7 @@ async def upload_resume(
         buffer.write(content)
 
     raw_text = nlp_pipeline.extract_text_from_pdf(file_path)
+    raw_text = nlp_pipeline.normalize_aliases(raw_text)
     processed_text = nlp_pipeline.preprocess_text(raw_text)
 
     skills = nlp_pipeline.extract_skills(processed_text)
@@ -835,6 +1241,7 @@ def create_job(job: JobCreate, recruiter_id: str):
         "created_at": datetime.utcnow()
     }
     result = jobs_collection.insert_one(job_doc)
+    jobs_cache.clear()
 
     return {
         "job_id": str(result.inserted_id),
@@ -972,7 +1379,8 @@ def match_resume_to_job_endpoint(resume_id: str, job_id: str):
         resume.get("extracted_text", ""),
         job.get("description", ""),
         resume.get("skills", []),
-        job.get("required_skills", [])
+        job.get("required_skills", []),
+        job.get("title", "")
     )
 
     match_doc = {
@@ -993,7 +1401,8 @@ def match_resume_to_job_endpoint(resume_id: str, job_id: str):
         "text_similarity": match_result["text_similarity"],
         "skill_match_ratio": match_result["skill_match_ratio"],
         "matched_skills": match_result["matched_skills"],
-        "missing_skills": match_result["missing_skills"]
+        "missing_skills": match_result["missing_skills"],
+        "match_details": match_result.get("match_details", [])
     }
 
 
@@ -1061,7 +1470,8 @@ def get_matching_candidates(job_id: str, min_score: float = 0.0):
             resume.get("extracted_text", ""),
             job.get("description", ""),
             resume.get("skills", []),
-            job.get("required_skills", [])
+            job.get("required_skills", []),
+            job.get("title", "")
         )
 
         status = resume.get("application_status", {}).get(job_id, "pending")
@@ -1073,6 +1483,7 @@ def get_matching_candidates(job_id: str, min_score: float = 0.0):
                 "similarity_score": match_result["similarity_score"],
                 "matched_skills": match_result["matched_skills"],
                 "missing_skills": match_result["missing_skills"],
+                "match_details": match_result.get("match_details", []),
                 "status": status
             })
 
@@ -1125,7 +1536,8 @@ def get_job_recommendations(resume_id: str):
             resume.get("extracted_text", ""),
             job.get("description", ""),
             resume.get("skills", []),
-            job.get("required_skills", [])
+            job.get("required_skills", []),
+            job.get("title", "")
         )
 
         recommendations.append({

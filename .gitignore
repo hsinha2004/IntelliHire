@@ -61,3 +61,8 @@ venv.bak/
 
 # pytest
 .pytest_cache
+
+# IntelliHire — runtime artifacts (never commit these)
+backend/uploads/
+test_results.json
+backend.log
