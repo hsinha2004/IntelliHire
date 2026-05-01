@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Upload,
@@ -22,8 +22,82 @@ import {
   ExternalLink,
   Trash2,
 } from "lucide-react";
+import { motion, AnimatePresence, LayoutGroup, useInView } from "framer-motion";
+import {
+  cardHover,
+  cardHoverSubtle,
+  staggerContainer,
+  staggerItem,
+  pageVariants,
+  viewport,
+} from "../lib/motion";
 import { resumeAPI, jobsAPI, getLiveJobs } from "../services/api";
 import ResumeFeedback from "../components/ResumeFeedback";
+import { FloatingHint } from "../components/FloatingHint";
+import { ProgressStepper } from "../components/ProgressStepper";
+import { MatchRing } from "../components/MatchRing";
+import { SkillGapChart } from "../components/SkillGapChart";
+
+/* ── Animated Skill Bar ─────────────────────────────────────── */
+function AnimatedSkillBar({ percentage, color = "#E8521A", delay = 0 }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: "-20px" });
+  return (
+    <div
+      ref={ref}
+      style={{
+        width: "100%", height: "6px",
+        background: "rgba(0,0,0,0.08)",
+        borderRadius: "3px", overflow: "hidden",
+      }}
+    >
+      <motion.div
+        initial={{ width: 0 }}
+        animate={inView ? { width: `${percentage}%` } : { width: 0 }}
+        transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1], delay }}
+        style={{
+          height: "100%",
+          background: `linear-gradient(90deg, ${color}, ${color === "#E8521A" ? "#9b8ec4" : "#E8521A"})`,
+          borderRadius: "3px", position: "relative", overflow: "hidden",
+        }}
+      >
+        <motion.div
+          initial={{ x: "-100%" }}
+          animate={inView ? { x: "200%" } : { x: "-100%" }}
+          transition={{ duration: 0.6, delay: delay + 0.9, ease: "easeInOut" }}
+          style={{
+            position: "absolute", top: 0, left: 0,
+            width: "50%", height: "100%",
+            background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)",
+          }}
+        />
+      </motion.div>
+    </div>
+  );
+}
+
+/* ── Count Up Number ────────────────────────────────────────── */
+function CountUp({ to, duration = 1.2, delay = 0 }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!inView) return;
+    let start = 0;
+    const startTime = Date.now() + delay * 1000;
+    const step = () => {
+      const now = Date.now();
+      if (now < startTime) { requestAnimationFrame(step); return; }
+      const elapsed = (now - startTime) / (duration * 1000);
+      const progress = Math.min(elapsed, 1);
+      const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+      setCount(Math.round(eased * to));
+      if (progress < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, [inView, to, duration, delay]);
+  return <span ref={ref}>{count}</span>;
+}
 
 const CandidateDashboard = () => {
   const [user, setUser] = useState(null);
@@ -333,65 +407,91 @@ const CandidateDashboard = () => {
 
       <div className="container">
         {/* Tabs */}
-        <div className="dashboard-tabs">
-          <button
-            className={`tab ${activeTab === "overview" ? "active" : ""}`}
-            onClick={() => setActiveTab("overview")}
-          >
-            Overview
-          </button>
-          <button
-            className={`tab ${activeTab === "upload" ? "active" : ""}`}
-            onClick={() => setActiveTab("upload")}
-          >
-            Upload Resume
-          </button>
-          <button
-            className={`tab ${activeTab === "skills" ? "active" : ""}`}
-            onClick={() => setActiveTab("skills")}
-            disabled={!analysis}
-          >
-            Skills Analysis
-          </button>
-          <button
-            className={`tab ${activeTab === "jobs" ? "active" : ""}`}
-            onClick={() => setActiveTab("jobs")}
-            disabled={recommendations.length === 0}
-          >
-            Job Matches
-          </button>
-          <button
-            className={`tab ${activeTab === "live_jobs" ? "active" : ""}`}
-            onClick={() => setActiveTab("live_jobs")}
-            disabled={!analysis}
-          >
-            Live Jobs
-          </button>
-          <button
-            className={`tab ${activeTab === "ai_feedback" ? "active" : ""}`}
-            onClick={() => setActiveTab("ai_feedback")}
-            disabled={!analysis}
-          >
-            AI Feedback
-          </button>
-        </div>
+        <LayoutGroup>
+          <div className="dashboard-tabs">
+            {[
+              { id: "overview", label: "Overview", disabled: false },
+              { id: "upload", label: "Upload Resume", disabled: false },
+              { id: "skills", label: "Skills Analysis", disabled: !analysis },
+              { id: "jobs", label: "Job Matches", disabled: recommendations.length === 0 },
+              { id: "live_jobs", label: "Live Jobs", disabled: !analysis },
+              { id: "ai_feedback", label: "AI Feedback", disabled: !analysis },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => !tab.disabled && setActiveTab(tab.id)}
+                disabled={tab.disabled}
+                style={{
+                  position: "relative", padding: "0.5rem 1rem",
+                  background: "transparent", border: "none",
+                  cursor: tab.disabled ? "not-allowed" : "pointer",
+                  fontSize: "0.875rem",
+                  fontWeight: activeTab === tab.id ? 600 : 500,
+                  color: tab.disabled ? "rgba(0,0,0,0.25)" : activeTab === tab.id ? "#E8521A" : "rgba(0,0,0,0.5)",
+                  transition: "color 0.2s ease",
+                  display: "flex", alignItems: "center", gap: "6px",
+                  marginRight: "var(--space-lg)", whiteSpace: "nowrap",
+                  opacity: tab.disabled ? 0.4 : 1,
+                  fontFamily: "inherit",
+                }}
+              >
+                {activeTab === tab.id && (
+                  <motion.span
+                    layoutId="activeTabPill"
+                    style={{
+                      position: "absolute", inset: 0,
+                      background: "rgba(232,82,26,0.08)",
+                      borderRadius: "8px",
+                      border: "1px solid rgba(232,82,26,0.2)",
+                      zIndex: 0,
+                    }}
+                    transition={{ type: "spring", damping: 30, stiffness: 350 }}
+                  />
+                )}
+                {activeTab === tab.id && (
+                  <motion.span
+                    layoutId="activeTabLine"
+                    style={{
+                      position: "absolute", bottom: -1, left: "10%",
+                      width: "80%", height: "2px",
+                      background: "linear-gradient(90deg, #E8521A, #9b8ec4)",
+                      borderRadius: "2px", zIndex: 1,
+                    }}
+                    transition={{ type: "spring", damping: 30, stiffness: 350 }}
+                  />
+                )}
+                <span style={{ position: "relative", zIndex: 1 }}>{tab.label}</span>
+              </button>
+            ))}
+          </div>
+        </LayoutGroup>
 
         {/* Overview Tab */}
+        <AnimatePresence mode="wait">
         {activeTab === "overview" && (
-          <div className="tab-content">
+          <motion.div key="overview" className="tab-content" variants={pageVariants} initial="hidden" animate="show" exit="exit">
+            {/* Progress Stepper */}
+            <ProgressStepper
+              hasResume={!!analysis}
+              hasSkills={analysis?.skills?.length > 0}
+              hasMatches={recommendations.length > 0}
+              hasFeedback={false}
+              onStepClick={(stepId) => setActiveTab(stepId)}
+            />
+
             {/* Stats Row */}
-            <div className="stats-row">
-              <div className="stat-item">
+            <motion.div className="stats-row" variants={staggerContainer(0.1, 0.10)} initial="hidden" whileInView="show" viewport={viewport}>
+              <motion.div className="stat-item" variants={staggerItem} whileHover={cardHoverSubtle}>
                 <h3>{skillProfile?.total_resumes || 0}</h3>
                 <p>Resumes Uploaded</p>
-              </div>
+              </motion.div>
               <div className="stat-divider"></div>
-              <div className="stat-item">
+              <motion.div className="stat-item" variants={staggerItem} whileHover={cardHoverSubtle}>
                 <h3>{skillProfile?.all_skills?.length || 0}</h3>
                 <p>Skills Identified</p>
-              </div>
+              </motion.div>
               <div className="stat-divider"></div>
-              <div className="stat-item">
+              <motion.div className="stat-item" variants={staggerItem} whileHover={cardHoverSubtle}>
                 <h3>
                   {skillProfile?.all_skills?.length > 0
                     ? Math.round(
@@ -404,60 +504,70 @@ const CandidateDashboard = () => {
                 %
                 </h3>
                 <p>Avg. Skill Strength</p>
-              </div>
+              </motion.div>
               <div className="stat-divider"></div>
-              <div className="stat-item">
+              <motion.div className="stat-item" variants={staggerItem} whileHover={cardHoverSubtle}>
                 <h3>{recommendations.length}</h3>
                 <p>Job Matches</p>
-              </div>
-            </div>
+              </motion.div>
+            </motion.div>
 
             {/* Quick Actions */}
             <div className="quick-actions">
               <h2>Quick Actions</h2>
-              <div className="actions-grid">
-                <div
+              <motion.div className="actions-grid" variants={staggerContainer(0.1, 0.10)} initial="hidden" whileInView="show" viewport={viewport}>
+                <motion.div
                   className="action-card"
                   onClick={() => setActiveTab("upload")}
+                  variants={staggerItem}
+                  whileHover={cardHover}
+                  whileTap={{ scale: 0.98 }}
+                  style={{ willChange: "transform" }}
                 >
                   <div className="action-icon">
                     <Upload size={28} />
                   </div>
                   <h3>Upload Resume</h3>
                   <p>Get AI-powered skill analysis</p>
-                </div>
-                <div
+                </motion.div>
+                <motion.div
                   className="action-card"
                   onClick={() => analysis && setActiveTab("skills")}
-                  style={{ opacity: analysis ? 1 : 0.5 }}
+                  style={{ opacity: analysis ? 1 : 0.5, willChange: "transform" }}
+                  variants={staggerItem}
+                  whileHover={analysis ? cardHover : undefined}
+                  whileTap={analysis ? { scale: 0.98 } : undefined}
                 >
                   <div className="action-icon">
                     <BarChart3 size={28} />
                   </div>
                   <h3>View Skills</h3>
                   <p>See your skill strengths and gaps</p>
-                </div>
-                <div
+                </motion.div>
+                <motion.div
                   className="action-card"
                   onClick={() =>
                     recommendations.length > 0 && setActiveTab("jobs")
                   }
-                  style={{ opacity: recommendations.length > 0 ? 1 : 0.5 }}
+                  style={{ opacity: recommendations.length > 0 ? 1 : 0.5, willChange: "transform" }}
+                  variants={staggerItem}
+                  whileHover={recommendations.length > 0 ? cardHover : undefined}
+                  whileTap={recommendations.length > 0 ? { scale: 0.98 } : undefined}
                 >
                   <div className="action-icon">
                     <Briefcase size={28} />
                   </div>
                   <h3>Find Jobs</h3>
                   <p>Discover matching opportunities</p>
-                </div>
-              </div>
+                </motion.div>
+              </motion.div>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* Upload Tab */}
         {activeTab === "upload" && (
-          <div className="tab-content">
+          <motion.div key="upload" className="tab-content" variants={pageVariants} initial="hidden" animate="show" exit="exit">
             <div className="upload-section">
               <div
                 className={`file-upload ${isUploading ? "uploading" : ""}`}
@@ -540,13 +650,14 @@ const CandidateDashboard = () => {
                 </div>
               )}
             </div>
-          </div>
+            <FloatingHint message="Upload your resume to get started" icon="📄" storageKey="upload_resume_hint" delay={1500} position="bottom-right" />
+          </motion.div>
         )}
 
         {/* Skills Tab */}
         {activeTab === "skills" && analysis && (
-          <div className="tab-content">
-            <div className="skills-grid">
+          <motion.div key="skills" className="tab-content" variants={pageVariants} initial="hidden" animate="show" exit="exit">
+            <motion.div className="skills-grid" variants={staggerContainer(0.05, 0.07)} initial="hidden" whileInView="show" viewport={viewport}>
               {/* Skill Pill Tags */}
               <div className="skills-card" style={{ gridColumn: '1 / -1', padding: '2rem', background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-xl)', boxShadow: 'none' }}>
                 <div className="card-header" style={{ marginBottom: '2rem' }}>
@@ -843,35 +954,31 @@ const CandidateDashboard = () => {
                   ))}
                 </div>
               </div>
-            </div>
-          </div>
+            </motion.div>
+            <FloatingHint message="These skills were extracted from your resume" icon="✦" storageKey="skills_hint" delay={2000} position="bottom-right" />
+          </motion.div>
         )}
 
         {/* Jobs Tab */}
         {activeTab === "jobs" && (
-          <div className="tab-content">
+          <motion.div key="jobs" className="tab-content" variants={pageVariants} initial="hidden" animate="show" exit="exit">
             {/* Skill Simulation */}
             {/* Skill Simulation */}
             {renderSimulationBlock()}
 
             {/* Job Listings */}
-            <div className="jobs-list">
+            <motion.div className="jobs-list" variants={staggerContainer(0.1, 0.09)} initial="hidden" whileInView="show" viewport={viewport} key={activeTab}>
               {recommendations.map((job, index) => {
                 const score = getMatchScore(job);
                 return (
-                  <div key={index} className="job-card">
-                    <div className="job-header">
+                  <motion.div key={index} className="job-card" variants={staggerItem} whileHover={cardHover} whileTap={{ scale: 0.98 }} style={{ willChange: "transform", position: "relative" }}>
+                    <div style={{ position: "absolute", top: 16, right: 16, zIndex: 2 }}>
+                      <MatchRing percentage={score} size={64} />
+                    </div>
+                    <div className="job-header" style={{ paddingRight: '70px' }}>
                       <div className="job-title-section">
                         <h3>{job.title}</h3>
                         <p>{job.company}</p>
-                      </div>
-                      <div
-                        className={`match-score ${
-                          score > 70 ? "high" : score > 40 ? "medium" : "low"
-                        }`}
-                      >
-                        <span className="score-value">{score.toFixed(1)}%</span>
-                        <span className="score-label">Match</span>
                       </div>
                     </div>
 
@@ -951,16 +1058,16 @@ const CandidateDashboard = () => {
                         </button>
                       )}
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         )}
 
         {/* Live Jobs Tab */}
         {activeTab === "live_jobs" && (
-          <div className="tab-content">
+          <motion.div key="live_jobs" className="tab-content" variants={pageVariants} initial="hidden" animate="show" exit="exit">
             {!analysis ? (
               <div className="empty-state" style={{ textAlign: 'center', padding: '3rem 0' }}>
                 <AlertCircle size={48} className="text-muted" style={{ margin: '0 auto 1rem', color: 'var(--text-muted)' }} />
@@ -1048,24 +1155,23 @@ const CandidateDashboard = () => {
                       )}
                     </div>
 
-                    <div className="live-jobs-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem' }}>
+                    <motion.div className="live-jobs-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem' }} variants={staggerContainer(0.08, 0.08)} initial="hidden" whileInView="show" viewport={viewport}>
                       {[...liveJobs]
                         .sort((a, b) => {
                           if (liveJobsSort === 'match') return (getMatchScore(b) || 0) - (getMatchScore(a) || 0);
                           return b.salary.localeCompare(a.salary); 
                         })
                         .map((job, idx) => (
-                        <div key={idx} className="job-card" style={{ display: 'flex', flexDirection: 'column' }}>
-                          <div className="job-header" style={{ marginBottom: '1rem' }}>
+                        <motion.div key={idx} className="job-card" style={{ display: 'flex', flexDirection: 'column', position: 'relative' }} variants={staggerItem} whileHover={cardHover} whileTap={{ scale: 0.98 }}>
+                          <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 2 }}>
+                            <MatchRing percentage={getMatchScore(job) || 0} size={52} />
+                          </div>
+                          <div className="job-header" style={{ marginBottom: '1rem', paddingRight: '60px' }}>
                             <div className="job-title-section" style={{ flex: 1 }}>
                               <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '0.25rem' }}>{job.title}</h3>
                               <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', margin: 0 }}>
                                 {job.company} • {job.location || 'Remote'}
                               </p>
-                            </div>
-                            <div className={`match-score ${getMatchScore(job) > 70 ? 'high' : getMatchScore(job) > 40 ? 'medium' : 'low'}`}>
-                              <span className="score-value">{getMatchScore(job)?.toFixed(1) || 0}%</span>
-                              <span className="score-label">Match</span>
                             </div>
                           </div>
                           
@@ -1105,25 +1211,27 @@ const CandidateDashboard = () => {
                               Apply Now <ExternalLink size={14} />
                             </a>
                           </div>
-                        </div>
+                        </motion.div>
                       ))}
-                    </div>
+                    </motion.div>
                   </>
                 )}
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* AI Feedback Tab */}
         {activeTab === "ai_feedback" && analysis && (
-          <div className="tab-content">
-            <ResumeFeedback
+          <motion.div key="ai_feedback" className="tab-content" variants={pageVariants} initial="hidden" animate="show" exit="exit">
+           <ResumeFeedback
               resumeId={analysis.resume_id}
               jobs={recommendations}
             />
-          </div>
+            <FloatingHint message="Select a job to get tailored feedback" icon="🎯" storageKey="ai_feedback_hint" delay={1200} position="bottom-right" />
+          </motion.div>
         )}
+        </AnimatePresence>
       </div>
 
       <style>{`

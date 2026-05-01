@@ -1,5 +1,57 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import { motion, useInView } from "framer-motion";
+import { staggerContainer, staggerItem } from "../lib/motion";
 import { resumeAPI } from "../services/api";
+
+/* ── Animated Score Ring ───────────────────────────────── */
+function AnimatedScoreRing({ score, size = 140, strokeWidth = 10 }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+  const r = (size / 2) - strokeWidth;
+  const circ = 2 * Math.PI * r;
+  const filled = (score / 100) * circ;
+  const color = score >= 75 ? '#E8521A' : score >= 50 ? '#9b8ec4' : '#d4a5a0';
+  const label = score >= 75 ? 'Strong' : score >= 50 ? 'Average' : 'Needs Work';
+  return (
+    <div ref={ref} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1e293b" strokeWidth={strokeWidth} />
+        <motion.circle
+          cx={size/2} cy={size/2} r={r}
+          fill="none" stroke={color}
+          strokeWidth={strokeWidth} strokeLinecap="round"
+          strokeDasharray={circ}
+          initial={{ strokeDashoffset: circ }}
+          animate={inView ? { strokeDashoffset: circ - filled } : { strokeDashoffset: circ }}
+          transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
+          style={{ transformOrigin: `${size/2}px ${size/2}px`, transform: 'rotate(-90deg)' }}
+        />
+        <text x={size/2} y={size/2 - 6} textAnchor="middle" dominantBaseline="central"
+              fontSize={size * 0.2} fontWeight={700} fill={color}
+              fontFamily="Inter, system-ui, sans-serif">
+          {score}
+        </text>
+        <text x={size/2} y={size/2 + 16} textAnchor="middle"
+              fontSize={size * 0.085} fill="#71717a"
+              fontFamily="Inter, system-ui, sans-serif">
+          /100
+        </text>
+      </svg>
+      <motion.span
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={inView ? { opacity: 1, scale: 1 } : {}}
+        transition={{ delay: 1.2, type: 'spring', damping: 20, stiffness: 300 }}
+        style={{
+          padding: '3px 12px', borderRadius: 9999,
+          fontSize: 12, fontWeight: 600,
+          background: color + '18', border: `1px solid ${color}40`, color: color
+        }}
+      >
+        {label}
+      </motion.span>
+    </div>
+  );
+}
 
 const Card = ({ children, style = {} }) => (
   <div style={{
@@ -193,27 +245,7 @@ const ResumeFeedback = ({ resumeId, jobs = [] }) => {
               <div style={{ padding: '32px 28px' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 28, flexWrap: 'wrap', marginBottom: 24 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                    <svg width={128} height={128} viewBox="0 0 128 128">
-                      <circle cx={64} cy={64} r={R} fill="none" stroke="#1e293b" strokeWidth={10} />
-                      <circle cx={64} cy={64} r={R} fill="none"
-                              stroke={arcColor} strokeWidth={10}
-                              strokeDasharray={`${filled} ${CIRC}`}
-                              strokeLinecap="round"
-                              transform="rotate(-90 64 64)"
-                              style={{ transition: 'stroke-dasharray 1.4s cubic-bezier(0.4,0,0.2,1)' }} />
-                      <text x={64} y={58} textAnchor="middle" fontSize={28} fontWeight={700} fill={arcColor}>
-                        {data.overall_score}
-                      </text>
-                      <text x={64} y={76} textAnchor="middle" fontSize={12} fill="#71717a">
-                        /100
-                      </text>
-                    </svg>
-                    <span style={{
-                      padding: '4px 14px', borderRadius: 980, fontSize: 13, fontWeight: 600,
-                      background: arcColor + '33', color: arcColor
-                    }}>
-                      {arcLabel}
-                    </span>
+                    <AnimatedScoreRing score={data.overall_score} />
                   </div>
 
                   <div style={{ flex: 1, minWidth: 200 }}>

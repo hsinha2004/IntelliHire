@@ -130,28 +130,70 @@ export const analyticsAPI = {
   getSkillAnalytics: () => api.get("/analytics/skills"),
 };
 
+// Seeded random for consistent mock scores
+const getSeededRandom = (str) => {
+  let h = 0;
+  for(let i = 0; i < str.length; i++) h = Math.imul(31, h) + str.charCodeAt(i) | 0;
+  return function() {
+    h = Math.imul(152501029, h);
+    return ((h >>> 0) / 4294967296);
+  };
+};
+
 // AI Models API (mock endpoints for now)
 export const aiAPI = {
   rankCandidates: (jobId, model = "bert") => 
-    api.get(`/jobs/${jobId}/candidates`).then(res => ({
-      data: {
-        candidates: res.data.candidates,
-        model: model
-      }
-    })),
+    api.get(`/jobs/${jobId}/candidates`).then(res => {
+      const candidates = (res.data.candidates || []).map(c => {
+        const rand = getSeededRandom(c.resume_id || 'default');
+        const r1 = rand();
+        const r2 = rand();
+        const bert = c.similarity_score;
+        const tfidf = Math.max(0, Math.min(100, bert - 5 + r1 * 10));
+        const xgboost = Math.max(0, Math.min(100, bert - 3 + r2 * 8));
+        
+        let finalScore = bert;
+        if (model === "tfidf") finalScore = tfidf;
+        if (model === "xgboost") finalScore = xgboost;
+        
+        return {
+          ...c,
+          similarity_score: finalScore,
+          bert_score: bert,
+          tfidf_score: tfidf,
+          xgboost_score: xgboost,
+        };
+      });
+      // Re-sort based on the new similarity score
+      candidates.sort((a, b) => b.similarity_score - a.similarity_score);
+      return {
+        data: {
+          candidates: candidates,
+          model: model
+        }
+      };
+    }),
   
   compareModels: (jobId) => 
     api.get(`/jobs/${jobId}/candidates`).then(res => {
       const candidates = res.data.candidates || [];
       return {
         data: {
-          comparisons: candidates.slice(0, 5).map(c => ({
-            candidate_id: c.resume_id,
-            bert_score: c.similarity_score,
-            tfidf_score: Math.max(0, c.similarity_score - 5 + Math.random() * 10),
-            xgboost_score: Math.max(0, c.similarity_score - 3 + Math.random() * 8),
-            variance: Math.random() * 15
-          }))
+          comparisons: candidates.slice(0, 5).map(c => {
+            const rand = getSeededRandom(c.resume_id || 'default');
+            const r1 = rand();
+            const r2 = rand();
+            const bert = c.similarity_score;
+            const tfidf = Math.max(0, Math.min(100, bert - 5 + r1 * 10));
+            const xgboost = Math.max(0, Math.min(100, bert - 3 + r2 * 8));
+            return {
+              candidate_id: c.resume_id,
+              bert_score: bert,
+              tfidf_score: tfidf,
+              xgboost_score: xgboost,
+              variance: Math.max(bert, tfidf, xgboost) - Math.min(bert, tfidf, xgboost)
+            };
+          })
         }
       };
     }),

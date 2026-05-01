@@ -4,7 +4,9 @@ import {
   Routes,
   Route,
   Navigate,
+  useLocation,
 } from "react-router-dom";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import Navbar from "./components/Navbar";
 import LandingPage from "./pages/LandingPage";
 import Login from "./pages/Login";
@@ -56,70 +58,91 @@ const ProtectedRoute = ({ children, allowedRole }) => {
   return children;
 };
 
+// Animated routes wrapper
+function AnimatedRoutes() {
+  const location = useLocation();
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location.pathname}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        <Routes location={location}>
+          {/* Public Routes */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+
+          {/* Protected Routes */}
+          <Route
+            path="/candidate"
+            element={
+              <ProtectedRoute allowedRole="candidate">
+                <CandidateDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/recruiter"
+            element={
+              <ProtectedRoute allowedRole="recruiter">
+                <RecruiterDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 function App() {
   return (
-    <Router>
-      <div className="app">
-        <Navbar />
-        <main className="main-content">
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+    <MotionConfig reducedMotion="user">
+      <Router>
+        <div className="app">
+          <Navbar />
+          <main className="main-content">
+            <AnimatedRoutes />
+          </main>
 
-            {/* Protected Routes */}
-            <Route
-              path="/candidate"
-              element={
-                <ProtectedRoute allowedRole="candidate">
-                  <CandidateDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/recruiter"
-              element={
-                <ProtectedRoute allowedRole="recruiter">
-                  <RecruiterDashboard />
-                </ProtectedRoute>
-              }
-            />
+          <style jsx>{`
+            .app {
+              min-height: 100vh;
+              display: flex;
+              flex-direction: column;
+            }
 
-            {/* Fallback */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
+            .main-content {
+              flex: 1;
+            }
 
-        <style jsx>{`
-          .app {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-          }
+            .loading-screen {
+              min-height: calc(100vh - 72px);
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              gap: var(--space-md);
+              color: var(--text-secondary);
+            }
 
-          .main-content {
-            flex: 1;
-          }
-
-          .loading-screen {
-            min-height: calc(100vh - 72px);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: var(--space-md);
-            color: var(--text-secondary);
-          }
-
-          .loading-screen .spinner {
-            width: 40px;
-            height: 40px;
-            border-width: 4px;
-          }
-        `}</style>
-      </div>
-    </Router>
+            .loading-screen .spinner {
+              width: 40px;
+              height: 40px;
+              border-width: 4px;
+            }
+          `}</style>
+        </div>
+      </Router>
+    </MotionConfig>
   );
 }
 

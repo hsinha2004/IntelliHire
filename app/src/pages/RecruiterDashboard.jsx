@@ -1,5 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { 
+  motion, 
+  AnimatePresence, 
+  LayoutGroup,
+  useInView 
+} from "framer-motion";
+import {
+  springs,
+  easing,
+  viewport,
+  fadeUp,
+  fadeIn,
+  staggerContainer,
+  staggerItem,
+  cardHover,
+  cardHoverSubtle,
+  pageVariants,
+  scalePop
+} from "../lib/motion";
+import { FloatingHint } from "../components/FloatingHint";
 import {
   Briefcase,
   Plus,
@@ -34,6 +54,40 @@ import {
 } from "lucide-react";
 import { jobsAPI, aiAPI, resumeAPI } from "../services/api";
 import "../Dashboard.css";
+
+function useCountUp(to, duration = 1.2, delay = 0, inView) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!inView) return;
+    let startTime = null;
+    const startDelay = delay * 1000;
+    const step = (timestamp) => {
+      if (!startTime) startTime = timestamp + startDelay;
+      if (timestamp < startTime) { requestAnimationFrame(step); return; }
+      const elapsed = (timestamp - startTime) / (duration * 1000);
+      const progress = Math.min(elapsed, 1);
+      const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+      setCount(Math.round(eased * to));
+      if (progress < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, [inView, to, duration, delay]);
+  return count;
+}
+
+const AnimatedScore = ({ value, delay }) => {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+  const count = useCountUp(value, 1.0, delay, inView);
+  return <span ref={ref}>{count.toFixed(1)}</span>;
+};
+
+const AnimatedStat = ({ value, duration = 1.2, delay = 0 }) => {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+  const count = useCountUp(value, duration, delay, inView);
+  return <h3 ref={ref}>{count}</h3>;
+};
 
 const RecruiterDashboard = () => {
   const [user, setUser] = useState(null);
@@ -83,6 +137,21 @@ const RecruiterDashboard = () => {
     setUser(parsedUser);
     fetchJobs(parsedUser.id);
   }, [navigate]);
+
+  useEffect(() => {
+    if (activeTab === "comparison" && selectedJob) {
+      if (!modelComparison || modelComparison.jobId !== selectedJob.job_id) {
+        setIsLoading(true);
+        aiAPI.compareModels(selectedJob.job_id).then(res => {
+          setModelComparison({ ...res.data, jobId: selectedJob.job_id });
+          setIsLoading(false);
+        }).catch(err => {
+          console.error(err);
+          setIsLoading(false);
+        });
+      }
+    }
+  }, [activeTab, selectedJob, modelComparison]);
 
   const fetchJobs = async (userId) => {
     try {
@@ -238,7 +307,7 @@ const RecruiterDashboard = () => {
     setIsLoading(true);
     try {
       const response = await aiAPI.compareModels(jobId);
-      setModelComparison(response.data);
+      setModelComparison({ ...response.data, jobId });
       setActiveTab("comparison");
     } catch (error) {
       console.error("Error comparing models:", error);
@@ -259,16 +328,29 @@ const RecruiterDashboard = () => {
     return "rgba(239, 68, 68, 0.15)";
   };
 
+  const avgMatchScoreNum = candidates.length > 0 
+    ? parseFloat((candidates.reduce((acc, c) => acc + c.similarity_score, 0) / candidates.length).toFixed(1))
+    : 0;
+
   return (
-    <div className="dashboard">
+    <motion.div 
+      className="dashboard"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+    >
       {/* Header */}
       <div className="dashboard-header">
         <div className="container">
           <div className="header-content">
-            <div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
+            >
               <h1>Recruiter Dashboard</h1>
               <p>Welcome back, {user?.name || "Recruiter"}</p>
-            </div>
+            </motion.div>
           </div>
         </div>
       </div>
@@ -276,52 +358,100 @@ const RecruiterDashboard = () => {
       <div className="container">
         {/* Tabs */}
         <div className="dashboard-tabs">
-          <button
-            className={`tab ${activeTab === "jobs" ? "active" : ""}`}
-            onClick={() => setActiveTab("jobs")}
-          >
-            Job Postings
-          </button>
-          <button
-            className={`tab ${activeTab === "candidates" ? "active" : ""}`}
-            onClick={() => setActiveTab("candidates")}
-            disabled={!selectedJob}
-          >
-            Candidates
-          </button>
-          <button
-            className={`tab ${activeTab === "comparison" ? "active" : ""}`}
-            onClick={() => setActiveTab("comparison")}
-          >
-            Model Comparison
-          </button>
+          <LayoutGroup>
+            {[
+              { id: "jobs", label: "Job Postings", disabled: false },
+              { id: "candidates", label: "Candidates", disabled: false },
+              { id: "comparison", label: "Model Comparison", disabled: false }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                className={`tab ${activeTab === tab.id ? "active" : ""}`}
+                onClick={() => setActiveTab(tab.id)}
+                disabled={tab.disabled}
+                style={{ position: "relative" }}
+              >
+                {activeTab === tab.id && (
+                  <motion.span
+                    layoutId="recruiterActiveTabPill"
+                    style={{
+                      position: "absolute", inset: 0,
+                      background: "rgba(232,82,26,0.08)",
+                      borderRadius: "8px",
+                      border: "1px solid rgba(232,82,26,0.2)",
+                      zIndex: 0
+                    }}
+                    transition={{ type: "spring", damping: 30, stiffness: 350 }}
+                  />
+                )}
+                {activeTab === tab.id && (
+                  <motion.span
+                    layoutId="recruiterActiveTabLine"
+                    style={{
+                      position: "absolute", bottom: -1,
+                      left: "10%", width: "80%", height: "2px",
+                      background: "linear-gradient(90deg, #E8521A, #9b8ec4)",
+                      borderRadius: "2px", zIndex: 1
+                    }}
+                    transition={{ type: "spring", damping: 30, stiffness: 350 }}
+                  />
+                )}
+                <span style={{ position: "relative", zIndex: 1 }}>
+                  {tab.label}
+                </span>
+              </button>
+            ))}
+          </LayoutGroup>
         </div>
+
+        <AnimatePresence mode="wait">
 
         {/* Jobs Tab */}
         {activeTab === "jobs" && (
-          <div className="tab-content">
+          <motion.div 
+            key="jobs"
+            className="tab-content"
+            variants={pageVariants}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+          >
             {/* Stats Row */}
-            <div className="stats-row">
-              <div className="stat-item">
-                <h3>{jobs.length}</h3>
+            <motion.div 
+              className="stats-row"
+              variants={staggerContainer(0.1, 0.10)}
+              initial="hidden"
+              whileInView="show"
+              viewport={viewport}
+              key={activeTab}
+            >
+              <motion.div className="stat-item" variants={staggerItem} whileHover={cardHoverSubtle} style={{ cursor: "default" }}>
+                <AnimatedStat value={jobs.length} delay={0} />
                 <p>Active Jobs</p>
-              </div>
+              </motion.div>
               <div className="stat-divider"></div>
-              <div className="stat-item">
-                <h3>{jobs.reduce((acc, j) => acc + (j.candidates_count || 0), 0)}</h3>
+              <motion.div className="stat-item" variants={staggerItem} whileHover={cardHoverSubtle} style={{ cursor: "default" }}>
+                <AnimatedStat value={jobs.reduce((acc, j) => acc + (j.candidates_count || 0), 0)} delay={0.1} />
                 <p>Total Candidates</p>
-              </div>
+              </motion.div>
               <div className="stat-divider"></div>
-              <div className="stat-item">
-                <h3>N/A</h3>
+              <motion.div className="stat-item" variants={staggerItem} whileHover={cardHoverSubtle} style={{ cursor: "default" }}>
+                {candidates.length > 0 ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AnimatedStat value={avgMatchScoreNum} delay={0.2} />
+                    <h3 style={{ marginLeft: 2 }}>%</h3>
+                  </div>
+                ) : (
+                  <h3>N/A</h3>
+                )}
                 <p>Avg. Match Score</p>
-              </div>
+              </motion.div>
               <div className="stat-divider"></div>
-              <div className="stat-item">
-                <h3>3</h3>
+              <motion.div className="stat-item" variants={staggerItem} whileHover={cardHoverSubtle} style={{ cursor: "default" }}>
+                <AnimatedStat value={3} delay={0.3} />
                 <p>AI Models</p>
-              </div>
-            </div>
+              </motion.div>
+            </motion.div>
 
             {/* Create Job Button */}
             <div className="section-header">
@@ -336,9 +466,22 @@ const RecruiterDashboard = () => {
             </div>
 
             {/* Create Job Modal */}
-            {showCreateJob && (
-              <div className="modal-overlay">
-                <div className="modal">
+            <AnimatePresence>
+              {showCreateJob && (
+                <motion.div 
+                  className="modal-overlay"
+                  initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+                  animate={{ opacity: 1, backdropFilter: "blur(4px)" }}
+                  exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <motion.div 
+                    className="modal"
+                    initial={{ scale: 0.9, y: 20, opacity: 0 }}
+                    animate={{ scale: 1, y: 0, opacity: 1 }}
+                    exit={{ scale: 0.9, y: 20, opacity: 0 }}
+                    transition={springs.bouncy}
+                  >
                   <div className="modal-header">
                     <h3>Create New Job Posting</h3>
                     <button
@@ -460,14 +603,29 @@ const RecruiterDashboard = () => {
                       </button>
                     </div>
                   </form>
-                </div>
-              </div>
-            )}
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Edit Job Modal */}
-            {showEditJob && (
-              <div className="modal-overlay" style={{zIndex: 1000}}>
-                <div className="modal">
+            <AnimatePresence>
+              {showEditJob && (
+                <motion.div 
+                  className="modal-overlay" 
+                  style={{zIndex: 1000}}
+                  initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+                  animate={{ opacity: 1, backdropFilter: "blur(4px)" }}
+                  exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <motion.div 
+                    className="modal"
+                    initial={{ scale: 0.9, y: 20, opacity: 0 }}
+                    animate={{ scale: 1, y: 0, opacity: 1 }}
+                    exit={{ scale: 0.9, y: 20, opacity: 0 }}
+                    transition={springs.bouncy}
+                  >
                   <div className="modal-header">
                     <h3>Edit Job Posting</h3>
                     <button
@@ -589,16 +747,27 @@ const RecruiterDashboard = () => {
                       </button>
                     </div>
                   </form>
-                </div>
-              </div>
-            )}
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Jobs List */}
-            <div className="jobs-grid">
+            <motion.div 
+              className="jobs-grid"
+              variants={staggerContainer(0.08, 0.09)}
+              initial="hidden"
+              animate="show"
+              key={activeTab + jobs.length}
+            >
               {jobs.map((job) => (
-                <div
+                <motion.div
                   key={job.job_id}
                   className={`job-card ${selectedJob?.job_id === job.job_id ? "selected" : ""}`}
+                  variants={staggerItem}
+                  whileHover={cardHover}
+                  whileTap={{ scale: 0.98 }}
+                  style={{ willChange: "transform" }}
                   onClick={() => {
                     setSelectedJob(job);
                     fetchCandidates(job.job_id);
@@ -607,7 +776,23 @@ const RecruiterDashboard = () => {
                 >
                   <div className="job-card-header">
                     <div className="job-info">
-                      <h3>{job.title}</h3>
+                      <h3 style={{ display: 'flex', alignItems: 'center' }}>
+                        {job.title}
+                        {job.created_at && new Date(job.created_at).toDateString() === new Date().toDateString() && (
+                          <motion.span
+                            animate={{ scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                            style={{
+                              display: "inline-block",
+                              width: 7, height: 7,
+                              borderRadius: "50%",
+                              background: "#E8521A",
+                              marginLeft: 8,
+                              verticalAlign: "middle"
+                            }}
+                          />
+                        )}
+                      </h3>
                       <div className="job-meta">
                         <span>
                           <Building2 size={14} />
@@ -652,54 +837,98 @@ const RecruiterDashboard = () => {
                         </span>
                       )}
                     </div>
-                    <div className="job-skills-preview">
+                    <motion.div 
+                      className="job-skills-preview"
+                      style={{ display: "flex", flexWrap: "wrap", gap: 6 }}
+                      variants={staggerContainer(0.05, 0.05)}
+                      initial="hidden"
+                      animate="show"
+                    >
                       {job.required_skills?.slice(0, 3).map((skill, idx) => (
-                        <span key={idx} className="skill-mini">
+                        <motion.span key={idx} variants={scalePop} className="skill-mini">
                           {skill}
-                        </span>
+                        </motion.span>
                       ))}
                       {job.required_skills?.length > 3 && (
-                        <span className="skill-mini more">
+                        <motion.span variants={scalePop} className="skill-mini more">
                           +{job.required_skills.length - 3}
-                        </span>
+                        </motion.span>
                       )}
-                    </div>
+                    </motion.div>
                   </div>
-                </div>
+                </motion.div>
               ))}
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         )}
 
         {/* Candidates Tab */}
-        {activeTab === "candidates" && selectedJob && (
-          <div className="tab-content">
+        {activeTab === "candidates" && (
+          <motion.div 
+            key="candidates"
+            className="tab-content"
+            variants={pageVariants}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+          >
+            {selectedJob ? (
+              <>
             {/* Model Selection */}
             <div className="model-selection">
               <h3>Select AI Model for Ranking</h3>
-              <div className="model-cards">
-                {aiModels.map((model) => (
-                  <button
-                    key={model.id}
-                    className={`model-card ${selectedModel === model.id ? "active" : ""}`}
-                    onClick={() => rankCandidates(selectedJob.job_id, model.id)}
-                    disabled={isLoading}
-                  >
-                    <div className="model-icon">
-                      <model.icon size={24} />
-                    </div>
-                    <div className="model-info">
-                      <h4>{model.name}</h4>
-                      <p>{model.description}</p>
-                    </div>
-                    {selectedModel === model.id && (
-                      <div className="model-active">
-                        <CheckCircle2 size={16} />
+              <LayoutGroup>
+                <motion.div 
+                  className="model-cards"
+                  variants={staggerContainer(0.1, 0.12)}
+                  initial="hidden"
+                  animate="show"
+                >
+                  {aiModels.map((model) => (
+                    <motion.button
+                      key={model.id}
+                      className={`model-card ${selectedModel === model.id ? "active" : ""}`}
+                      onClick={() => rankCandidates(selectedJob.job_id, model.id)}
+                      disabled={isLoading}
+                      variants={staggerItem}
+                      whileHover={{ 
+                        y: -3, 
+                        boxShadow: "0 8px 24px rgba(155,142,196,0.2)",
+                        borderColor: "rgba(155,142,196,0.4)",
+                        transition: springs.snappy
+                      }}
+                      whileTap={{ scale: 0.97 }}
+                      style={{ cursor: isLoading ? "not-allowed" : "pointer", position: "relative" }}
+                    >
+                      {selectedModel === model.id && (
+                        <motion.div
+                          layoutId="selectedModelIndicator"
+                          style={{
+                            position: "absolute", inset: 0,
+                            borderRadius: "inherit",
+                            border: "2px solid #9b8ec4",
+                            boxShadow: "0 0 20px rgba(155,142,196,0.2)",
+                            pointerEvents: "none"
+                          }}
+                          transition={{ type: "spring", damping: 28, stiffness: 320 }}
+                        />
+                      )}
+                      <div className="model-icon" style={{ position: "relative", zIndex: 1 }}>
+                        <model.icon size={24} />
                       </div>
-                    )}
-                  </button>
-                ))}
-              </div>
+                      <div className="model-info" style={{ position: "relative", zIndex: 1 }}>
+                        <h4>{model.name}</h4>
+                        <p>{model.description}</p>
+                      </div>
+                      {selectedModel === model.id && (
+                        <div className="model-active" style={{ position: "relative", zIndex: 1 }}>
+                          <CheckCircle2 size={16} />
+                        </div>
+                      )}
+                    </motion.button>
+                  ))}
+                </motion.div>
+              </LayoutGroup>
             </div>
 
             {/* Compare Models Button */}
@@ -764,30 +993,59 @@ const RecruiterDashboard = () => {
                 <p>Analyzing candidates with {selectedModel.toUpperCase()}...</p>
               </div>
             ) : (
-              <div className="candidates-list">
+              <motion.div 
+                className="candidates-list"
+                variants={staggerContainer(0.05, 0.07)}
+                initial="hidden"
+                animate="show"
+                key={activeTab + selectedJob.job_id}
+              >
                 {candidates
                   .filter(c => statusFilter === "all" ? (c.status || "pending") !== "rejected" : (c.status || "pending") === statusFilter)
                   .map((candidate, index) => (
-                  <div key={index} className="candidate-card">
+                  <motion.div 
+                    key={candidate.resume_id} 
+                    className="candidate-card"
+                    variants={staggerItem}
+                    whileHover={cardHoverSubtle}
+                    whileTap={{ scale: 0.99 }}
+                    layout
+                    style={{ willChange: "transform" }}
+                  >
                     <div className="candidate-left-content">
-                      <div className="candidate-rank">#{index + 1}</div>
-                      <div className="candidate-avatar">
+                      <motion.div 
+                        className="candidate-rank"
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ delay: index * 0.07, type: "spring", damping: 18, stiffness: 280 }}
+                      >
+                        #{index + 1}
+                      </motion.div>
+                      <motion.div 
+                        className="candidate-avatar"
+                        initial={{ scale: 0.5, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ delay: index * 0.07 + 0.05, type: "spring", damping: 20, stiffness: 300 }}
+                      >
                         {candidate.filename.charAt(0).toUpperCase()}
-                      </div>
+                      </motion.div>
                       <div className="candidate-info">
                         <h4>Candidate #{candidate.resume_id.substring(0, 8)}</h4>
                         <p className="line-clamp-2">{candidate.filename}</p>
                       </div>
                       <div className="candidate-score">
-                        <div
+                        <motion.div
                           className="score-circle"
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1], delay: index * 0.05 }}
                           style={{
                             background: getScoreBg(candidate.similarity_score),
                             color: getScoreColor(candidate.similarity_score),
                           }}
                         >
                           <span>{candidate.similarity_score.toFixed(1)}%</span>
-                        </div>
+                        </motion.div>
                       </div>
                     </div>
                     
@@ -796,9 +1054,18 @@ const RecruiterDashboard = () => {
                       <div className="candidate-pipeline-actions">
                         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                           <span style={{ fontSize: "0.875rem", color: "var(--text-secondary)", fontWeight: 500 }}>Status:</span>
-                          <span style={{ fontSize: "0.875rem", fontWeight: 600, padding: "0.25rem 0.75rem", borderRadius: "12px", border: `1px solid ${getStatusColor(candidate.status || "pending")}`, color: getStatusColor(candidate.status || "pending"), background: `${getStatusColor(candidate.status || "pending")}20` }}>
-                            {(candidate.status || "pending").charAt(0).toUpperCase() + (candidate.status || "pending").slice(1)}
-                          </span>
+                          <AnimatePresence mode="wait">
+                            <motion.span 
+                              key={candidate.status || "pending"}
+                              initial={{ opacity: 0, scale: 0.8, y: -4 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.8, y: 4 }}
+                              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                              style={{ fontSize: "0.875rem", fontWeight: 600, padding: "0.25rem 0.75rem", borderRadius: "12px", border: `1px solid ${getStatusColor(candidate.status || "pending")}`, color: getStatusColor(candidate.status || "pending"), background: `${getStatusColor(candidate.status || "pending")}20` }}
+                            >
+                              {(candidate.status || "pending").charAt(0).toUpperCase() + (candidate.status || "pending").slice(1)}
+                            </motion.span>
+                          </AnimatePresence>
                         </div>
                         
                         <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -844,38 +1111,58 @@ const RecruiterDashboard = () => {
                       <div className="candidate-skills">
                         <div className="skills-matched">
                           <span className="skills-label">Matched</span>
-                          <div className="skills-tags">
+                          <motion.div 
+                            className="skills-tags"
+                            style={{ display: "flex", flexWrap: "wrap", gap: 6 }}
+                            variants={staggerContainer(0.02, 0.04)}
+                            initial="hidden"
+                            animate="show"
+                          >
                             {candidate.matched_skills.slice(0, 4).map((skill, idx) => (
-                              <span key={idx} className="skill-tag matched">
+                              <motion.span key={idx} variants={scalePop} className="skill-tag matched">
                                 {skill}
-                              </span>
+                              </motion.span>
                             ))}
                             {candidate.matched_skills.length > 4 && (
-                              <span className="skill-tag more">
+                              <motion.span variants={scalePop} className="skill-tag more">
                                 +{candidate.matched_skills.length - 4}
-                              </span>
+                              </motion.span>
                             )}
-                          </div>
+                          </motion.div>
                         </div>
                         {candidate.missing_skills.length > 0 && (
                           <div className="skills-missing">
                             <span className="skills-label">Missing</span>
-                            <div className="skills-tags">
+                            <motion.div 
+                              className="skills-tags"
+                              style={{ display: "flex", flexWrap: "wrap", gap: 6 }}
+                              variants={staggerContainer(0.02, 0.04)}
+                              initial="hidden"
+                              animate="show"
+                            >
                               {candidate.missing_skills.slice(0, 3).map((skill, idx) => (
-                                <span key={idx} className="skill-tag missing">
+                                <motion.span key={idx} variants={scalePop} className="skill-tag missing">
                                   {skill}
-                                </span>
+                                </motion.span>
                               ))}
-                            </div>
+                            </motion.div>
                           </div>
                         )}
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
+              </motion.div>
+            )}
+              </>
+            ) : (
+              <div className="empty-state">
+                <Users size={48} />
+                <h3>No Job Selected</h3>
+                <p>Please select a job from the Job Postings tab to view matched candidates</p>
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* Model Comparison Tab */}
@@ -891,77 +1178,123 @@ const RecruiterDashboard = () => {
                 {/* Comparison Table */}
                 <div className="comparison-table">
                   <div className="table-header">
-                    <div className="table-cell">Candidate</div>
-                    <div className="table-cell">BERT</div>
-                    <div className="table-cell">TF-IDF</div>
-                    <div className="table-cell">XGBoost</div>
-                    <div className="table-cell">Variance</div>
+                    <div className="table-cell" style={{ textAlign: 'left' }}>CANDIDATE</div>
+                    <div className="table-cell" style={{ textAlign: 'center' }}>BERT</div>
+                    <div className="table-cell" style={{ textAlign: 'center' }}>TF-IDF</div>
+                    <div className="table-cell" style={{ textAlign: 'center' }}>XGBOOST</div>
+                    <div className="table-cell" style={{ textAlign: 'center' }}>VARIANCE</div>
                   </div>
-                  {modelComparison.comparisons?.map((comp, idx) => (
-                    <div key={idx} className="table-row">
-                      <div className="table-cell candidate-cell">
-                        #{comp.candidate_id}
-                      </div>
-                      <div className="table-cell score-cell">
-                        <span
-                          className="score-badge"
-                          style={{
-                            background: getScoreBg(comp.bert_score),
-                            color: getScoreColor(comp.bert_score),
-                          }}
-                        >
-                          {comp.bert_score.toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="table-cell score-cell">
-                        <span
-                          className="score-badge"
-                          style={{
-                            background: getScoreBg(comp.tfidf_score),
-                            color: getScoreColor(comp.tfidf_score),
-                          }}
-                        >
-                          {comp.tfidf_score.toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="table-cell score-cell">
-                        <span
-                          className="score-badge"
-                          style={{
-                            background: getScoreBg(comp.xgboost_score),
-                            color: getScoreColor(comp.xgboost_score),
-                          }}
-                        >
-                          {comp.xgboost_score.toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="table-cell variance-cell">
-                        {getVarianceIndicator(comp.variance)}
-                      </div>
-                    </div>
-                  ))}
+                  <motion.div
+                    variants={staggerContainer(0.05, 0.06)}
+                    initial="hidden"
+                    animate="show"
+                    key={activeTab}
+                  >
+                    {modelComparison.comparisons?.map((comp, idx) => (
+                      <motion.div 
+                        key={idx} 
+                        className="table-row"
+                        variants={fadeUp}
+                        whileHover={{ 
+                          backgroundColor: "rgba(232,82,26,0.03)",
+                          transition: { duration: 0.15 }
+                        }}
+                      >
+                        <div className="table-cell candidate-cell">
+                          #{comp.candidate_id}
+                        </div>
+                        <div className="table-cell score-cell">
+                          <span
+                            className="score-badge"
+                            style={{
+                              background: getScoreBg(comp.bert_score),
+                              color: getScoreColor(comp.bert_score),
+                            }}
+                          >
+                            <AnimatedScore value={comp.bert_score} delay={idx * 0.06} />%
+                          </span>
+                        </div>
+                        <div className="table-cell score-cell">
+                          <span
+                            className="score-badge"
+                            style={{
+                              background: getScoreBg(comp.tfidf_score),
+                              color: getScoreColor(comp.tfidf_score),
+                            }}
+                          >
+                            <AnimatedScore value={comp.tfidf_score} delay={idx * 0.06} />%
+                          </span>
+                        </div>
+                        <div className="table-cell score-cell">
+                          <span
+                            className="score-badge"
+                            style={{
+                              background: getScoreBg(comp.xgboost_score),
+                              color: getScoreColor(comp.xgboost_score),
+                            }}
+                          >
+                            <AnimatedScore value={comp.xgboost_score} delay={idx * 0.06} />%
+                          </span>
+                        </div>
+                        <div className="table-cell variance-cell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {getVarianceIndicator(comp.variance)}
+                          <motion.div
+                            style={{
+                              display: "inline-block",
+                              marginLeft: 8,
+                              width: 40, height: 4,
+                              background: "rgba(0,0,0,0.07)",
+                              borderRadius: 2,
+                              verticalAlign: "middle",
+                              overflow: "hidden"
+                            }}
+                          >
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.min(comp.variance * 10, 100)}%` }}
+                              transition={{ duration: 0.7, ease: [0.16,1,0.3,1], delay: idx * 0.06 }}
+                              style={{
+                                height: "100%", borderRadius: 2,
+                                background: comp.variance > 5
+                                  ? "#E8521A"
+                                  : comp.variance > 2
+                                    ? "#9b8ec4"
+                                    : "#34d399"
+                              }}
+                            />
+                          </motion.div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </motion.div>
                 </div>
 
                 {/* Model Insights */}
                 <div className="model-insights">
                   <h3>Model Insights</h3>
-                  <div className="insights-grid">
-                    <div className="insight-card">
+                  <motion.div 
+                    className="insights-grid"
+                    variants={staggerContainer(0.1, 0.12)}
+                    initial="hidden"
+                    whileInView="show"
+                    viewport={viewport}
+                  >
+                    <motion.div className="insight-card" variants={staggerItem} whileHover={cardHoverSubtle}>
                       <Brain size={24} />
                       <h4>BERT</h4>
                       <p>Best for semantic understanding of resume content and job requirements</p>
-                    </div>
-                    <div className="insight-card">
+                    </motion.div>
+                    <motion.div className="insight-card" variants={staggerItem} whileHover={cardHoverSubtle}>
                       <Activity size={24} />
                       <h4>TF-IDF</h4>
                       <p>Traditional approach focusing on keyword frequency and exact matches</p>
-                    </div>
-                    <div className="insight-card">
+                    </motion.div>
+                    <motion.div className="insight-card" variants={staggerItem} whileHover={cardHoverSubtle}>
                       <Cpu size={24} />
                       <h4>XGBoost</h4>
                       <p>Machine learning ensemble for complex pattern recognition</p>
-                    </div>
-                  </div>
+                    </motion.div>
+                  </motion.div>
                 </div>
               </div>
             ) : (
@@ -973,6 +1306,7 @@ const RecruiterDashboard = () => {
             )}
           </div>
         )}
+        </AnimatePresence>
       </div>
 
       <style>{`
@@ -1527,7 +1861,7 @@ const RecruiterDashboard = () => {
         .table-header,
         .table-row {
           display: grid;
-          grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr;
+          grid-template-columns: 2.5fr 1fr 1fr 1fr 1fr;
           gap: var(--space-md);
           padding: var(--space-md) var(--space-lg);
           align-items: center;
@@ -1688,7 +2022,15 @@ const RecruiterDashboard = () => {
           }
         }
       `}</style>
-    </div>
+
+      <FloatingHint 
+        message={
+          activeTab === 'jobs' ? "Click 'Create Job' to start hiring" :
+          activeTab === 'candidates' ? "Select a model to rank your candidates" :
+          "Compare models to find the best match"
+        } 
+      />
+    </motion.div>
   );
 };
 

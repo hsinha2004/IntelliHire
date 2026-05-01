@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Menu, X } from "lucide-react";
+import { motion } from "framer-motion";
+import { staggerContainer, staggerItem } from "../lib/motion";
 
 const Navbar = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -57,30 +59,43 @@ const Navbar = () => {
   const isActive = (path) => location.pathname === path;
 
   return (
-    <nav className={`navbar ${scrolled ? "scrolled" : ""}`}>
+    <motion.nav
+      className={`navbar ${scrolled ? "scrolled" : ""}`}
+      initial={{ y: -20, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+    >
       <div className="navbar-container">
         <Link to="/" className="navbar-logo">
           <img src="/logo.png" alt="IntelliHire" className="logo-img" />
           <span className="logo-text">IntelliHire</span>
         </Link>
 
-        <div className="navbar-links desktop">
+        <motion.div
+          className="navbar-links desktop"
+          variants={staggerContainer(0.1, 0.05)}
+          initial="hidden"
+          animate="show"
+        >
           {navLinks.map((link) => (
-            <Link
-              key={link.path}
-              to={link.path}
-              className={`nav-link ${isActive(link.path) ? "active" : ""}`}
-            >
-              <span>{link.label}</span>
-            </Link>
+            <motion.div key={link.path} variants={staggerItem}>
+              <Link
+                to={link.path}
+                className={`nav-link ${isActive(link.path) ? "active" : ""}`}
+              >
+                <span>{link.label}</span>
+              </Link>
+            </motion.div>
           ))}
 
           {isAuthenticated && (
-            <button onClick={handleLogout} className="nav-link logout">
-              <span>Logout</span>
-            </button>
+            <motion.div variants={staggerItem}>
+              <button onClick={handleLogout} className="nav-link logout">
+                <span>Logout</span>
+              </button>
+            </motion.div>
           )}
-        </div>
+        </motion.div>
 
         <button
           className="mobile-menu-btn"
@@ -125,7 +140,9 @@ const Navbar = () => {
 
         .navbar.scrolled {
           border-bottom-color: var(--border-primary);
-          box-shadow: 0 1px 8px rgba(0,0,0,0.04);
+          box-shadow: 0 2px 20px rgba(232,82,26,0.08), 0 1px 0 rgba(0,0,0,0.06);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
         }
 
         .navbar-container {
@@ -242,7 +259,7 @@ const Navbar = () => {
           }
         }
       `}</style>
-    </nav>
+    </motion.nav>
   );
 };
 
