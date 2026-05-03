@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "../lib/motion";
+import logoImg from "../assets/logo.png";
 
 const Navbar = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -67,7 +68,7 @@ const Navbar = () => {
     >
       <div className="navbar-container">
         <Link to="/" className="navbar-logo">
-          <img src="/logo.png" alt="IntelliHire" className="logo-img" />
+          <img src={logoImg} alt="IntelliHire" className="logo-img" />
           <span className="logo-text">IntelliHire</span>
         </Link>
 
