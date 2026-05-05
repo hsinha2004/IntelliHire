@@ -109,6 +109,8 @@ const CandidateDashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [simulatedSkills, setSimulatedSkills] = useState([]);
   const [showSimulation, setShowSimulation] = useState(false);
+  const [targetJobDescription, setTargetJobDescription] = useState("");
+  const [isAnalyzingGaps, setIsAnalyzingGaps] = useState(false);
   const [liveJobs, setLiveJobs] = useState([]);
   const [isFetchingLiveJobs, setIsFetchingLiveJobs] = useState(false);
   const [liveJobsLocation, setLiveJobsLocation] = useState("in");
@@ -310,6 +312,22 @@ const CandidateDashboard = () => {
     } catch (error) {
       console.error("Error withdrawing from job:", error);
       alert("Failed to withdraw. Please try again.");
+    }
+  };
+
+  const handleAnalyzeJobGaps = async () => {
+    if (!targetJobDescription.trim() || !analysis?.resume_id) return;
+    setIsAnalyzingGaps(true);
+    try {
+      const response = await resumeAPI.getFeedback(analysis.resume_id, { job_description: targetJobDescription });
+      setAnalysis(prev => ({
+        ...prev,
+        skill_gaps: response.data.missing_skills || []
+      }));
+    } catch (error) {
+      console.error("Error analyzing gaps", error);
+    } finally {
+      setIsAnalyzingGaps(false);
     }
   };
 
@@ -731,28 +749,24 @@ const CandidateDashboard = () => {
 
                     return (
                       <div key={index} className="premium-skill-bar" style={{
-                        background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.3), rgba(15, 23, 42, 0.5))',
-                        padding: '1.25rem 1.5rem',
-                        borderRadius: '16px',
-                        border: '1px solid rgba(255,255,255,0.03)',
+                        background: 'transparent',
+                        padding: '0.75rem 0',
+                        borderRadius: '0',
+                        border: 'none',
                         transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
                       }}
                       onMouseOver={(e) => {
-                        e.currentTarget.style.background = 'linear-gradient(145deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.8))';
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
                         e.currentTarget.style.transform = 'translateX(8px)';
-                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-                        e.currentTarget.style.boxShadow = `0 15px 30px rgba(0,0,0,0.4), -4px 0 0 ${isHigh ? '#2dd4bf' : isMed ? '#3b82f6' : '#8b5cf6'}`;
                       }}
                       onMouseOut={(e) => {
-                        e.currentTarget.style.background = 'linear-gradient(145deg, rgba(30, 41, 59, 0.3), rgba(15, 23, 42, 0.5))';
+                        e.currentTarget.style.background = 'transparent';
                         e.currentTarget.style.transform = 'translateX(0)';
-                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.03)';
-                        e.currentTarget.style.boxShadow = 'none';
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center' }}>
                           <span style={{ 
                             fontWeight: '600', 
-                            color: '#f8fafc',
+                            color: 'var(--text-primary)',
                             textTransform: 'uppercase',
                             letterSpacing: '1.5px',
                             fontSize: '0.85rem',
@@ -771,11 +785,10 @@ const CandidateDashboard = () => {
                           </span>
                           <span style={{ 
                             fontWeight: '700', 
-                            color: isHigh ? '#2dd4bf' : isMed ? '#38bdf8' : '#a78bfa',
+                            color: isHigh ? '#0f766e' : isMed ? '#1e3a8a' : '#4c1d95',
                             fontSize: '1.1rem',
                             fontFamily: 'monospace',
-                            letterSpacing: '1px',
-                            textShadow: `0 0 10px ${glowColor}`
+                            letterSpacing: '1px'
                           }}>
                             {skill.strength}%
                           </span>
@@ -825,11 +838,30 @@ const CandidateDashboard = () => {
               }}>
                 <div className="card-header" style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <AlertCircle size={24} color="#f43f5e" style={{ filter: 'drop-shadow(0 0 8px rgba(244,63,94,0.5))' }} />
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '0.5px' }}>Skill Gaps</h3>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '0.5px' }}>Skill Gaps based on Job Description</h3>
                 </div>
-                <p className="card-description" style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-                  Critical technical missing dependencies holding back your primary domains
+                <p className="card-description" style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                  Paste a target job description below to discover specific missing skills.
                 </p>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                  <input 
+                    type="text" 
+                    placeholder="Paste job description or requirements here..." 
+                    value={targetJobDescription}
+                    onChange={(e) => setTargetJobDescription(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAnalyzeJobGaps();
+                    }}
+                    style={{ flex: 1, padding: '0.75rem 1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', fontSize: '0.95rem' }}
+                  />
+                  <button 
+                    onClick={handleAnalyzeJobGaps}
+                    disabled={isAnalyzingGaps}
+                    style={{ padding: '0.75rem 1.25rem', background: 'linear-gradient(90deg, #f43f5e, #e11d48)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, boxShadow: '0 4px 15px rgba(244, 63, 94, 0.3)', transition: 'all 0.2s', opacity: isAnalyzingGaps ? 0.7 : 1 }}
+                  >
+                    {isAnalyzingGaps ? 'Analyzing...' : 'Analyze Gaps'}
+                  </button>
+                </div>
                 <div className="skills-list" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
                   {analysis.skill_gaps.map((gap, index) => (
                     <span key={index} className="premium-gap-tag" style={{
@@ -893,24 +925,20 @@ const CandidateDashboard = () => {
                       position: 'relative',
                       display: 'flex',
                       alignItems: 'center',
-                      marginBottom: '1.5rem',
-                      background: 'linear-gradient(90deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.6))',
-                      padding: '1.25rem 1.5rem',
-                      borderRadius: '16px',
-                      border: '1px solid rgba(255,255,255,0.03)',
+                      marginBottom: '1rem',
+                      background: 'transparent',
+                      padding: '0.75rem 0 0.75rem 1.5rem',
+                      borderRadius: '0',
+                      border: 'none',
                       transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
                     }}
                     onMouseOver={(e) => {
                       e.currentTarget.style.transform = 'translateX(8px)';
-                      e.currentTarget.style.background = 'linear-gradient(90deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9))';
-                      e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.4)';
-                      e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.3)';
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
                     }}
                     onMouseOut={(e) => {
                       e.currentTarget.style.transform = 'translateX(0)';
-                      e.currentTarget.style.background = 'linear-gradient(90deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.6))';
-                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.03)';
-                      e.currentTarget.style.boxShadow = 'none';
+                      e.currentTarget.style.background = 'transparent';
                     }}>
                       {/* Connected Timeline Node Bulb */}
                       <div className="step-number" style={{
@@ -937,12 +965,11 @@ const CandidateDashboard = () => {
 
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
                         <span className="step-skill" style={{
-                          color: '#f8fafc',
+                          color: 'var(--text-primary)',
                           fontWeight: '700',
                           fontSize: '1.1rem',
                           letterSpacing: '0.5px',
-                          textTransform: 'uppercase',
-                          textShadow: '0 0 8px rgba(139, 92, 246, 0.3)'
+                          textTransform: 'uppercase'
                         }}>
                           {skill}
                         </span>

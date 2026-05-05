@@ -182,199 +182,27 @@ class ResumeFeedbackResponse(BaseModel):
 
 # ============== SKILL DATABASE ==============
 
-TECH_SKILLS = {
-    # Programming Languages
-    "python", "java", "javascript", "typescript", "c++", "c#", "go", "rust", "ruby", "php",
-    "swift", "kotlin", "scala", "r", "matlab", "perl", "shell", "bash", "powershell",
+# Load Skills Configuration
+with open("skills_config.json", "r") as f:
+    config = json.load(f)
 
-    # Web Development
-    "html", "css", "react", "vue", "angular", "svelte", "nextjs", "nuxt", "django",
-    "flask", "fastapi", "spring", "express", "nodejs", "webpack", "vite", "tailwind",
-    "bootstrap", "sass", "less",
-
-    # Data Science & ML
-    "tensorflow", "pytorch", "keras", "scikit-learn", "pandas", "numpy", "scipy",
-    "matplotlib", "seaborn", "plotly", "jupyter", "opencv", "nlp", "machine learning",
-    "deep learning", "data analysis", "statistics", "sql", "mongodb", "postgresql",
-
-    # Cloud & DevOps
-    "aws", "azure", "gcp", "docker", "kubernetes", "jenkins", "gitlab", "github",
-    "terraform", "ansible", "prometheus", "grafana", "elasticsearch", "kafka",
-    "redis", "nginx", "apache",
-
-    # Mobile Development
-    "react native", "flutter", "android", "ios", "xamarin", "ionic",
-
-    # Databases
-    "mysql", "postgresql", "mongodb", "sqlite", "redis", "elasticsearch", "dynamodb",
-    "cassandra", "neo4j", "firebase",
-
-    # Tools & Others
-    "git", "linux", "agile", "scrum", "jira", "confluence", "figma", "sketch",
-    "photoshop", "illustrator", "tableau", "power bi",
-
-    # --- Accounting & Finance ---
-    "accounting", "bookkeeping", "financial reporting", "tally", "quickbooks",
-    "taxation", "auditing", "balance sheet", "gst", "tds", "ifrs", "gaap",
-    "financial modeling", "budgeting", "forecasting", "investment analysis",
-    "accounts payable", "accounts receivable", "payroll", "cost accounting",
-    "sap", "erp", "ms excel", "excel",
-
-    # --- Banking ---
-    "banking", "kyc", "aml", "credit analysis", "core banking", "finacle",
-    "compliance", "loan processing", "risk management", "trade finance",
-    "anti-money laundering", "financial products", "treasury",
-
-    # --- HR ---
-    "recruitment", "talent acquisition", "hr management", "employee relations",
-    "hrms", "labor law", "performance management", "onboarding", "training",
-    "compensation", "hris", "organizational development", "succession planning",
-
-    # --- Civil & Mechanical Engineering ---
-    "autocad", "structural design", "construction management", "revit", "staad pro",
-    "ms project", "civil engineering", "surveying", "site management",
-    "mechanical engineering", "solidworks", "catia", "ansys",
-
-    # --- SAP ---
-    "sap abap", "sap hana", "sap fiori", "s4hana", "sap basis", "sap mm",
-    "sap fi", "sap sd", "sap bw", "sap crm",
-
-    # --- .NET / Microsoft Stack ---
-    "asp.net", "dotnet", ".net", "entity framework", "sql server", "wpf",
-    "winforms", "visual studio", "c#", "azure devops",
-
-    # --- Digital Media & Marketing ---
-    "seo", "sem", "social media", "content creation", "google analytics",
-    "canva", "adobe", "photoshop", "illustrator", "indesign", "email marketing",
-    "copywriting", "brand management", "digital marketing",
-
-    # --- Network & Security ---
-    "network security", "firewall", "penetration testing", "siem",
-    "vulnerability assessment", "cissp", "ceh", "wireshark", "tcp/ip",
-    "ethical hacking", "cybersecurity", "network administration", "vpn",
-
-    # --- Sales & Business ---
-    "sales", "crm", "salesforce", "lead generation", "b2b", "b2c",
-    "hubspot", "business development", "account management", "customer success",
-
-    # --- QA / Testing ---
-    "selenium", "manual testing", "automation testing", "testng", "junit",
-    "api testing", "istqb", "cucumber", "postman", "performance testing",
-
-    # --- Business Analysis ---
-    "business analysis", "requirements gathering", "process mapping", "uml",
-    "stakeholder management", "user stories", "gap analysis",
-
-    # --- ETL & Data Engineering ---
-    "etl", "informatica", "ssis", "talend", "pentaho", "data warehouse",
-    "spark", "hadoop", "hive", "airflow", "data pipeline",
-
-    # --- Agriculture ---
-    "crop management", "soil science", "irrigation", "agronomy", "fertilizers",
-    "pest control", "farm management", "precision agriculture",
-
-    # --- Blockchain ---
-    "blockchain", "solidity", "ethereum", "web3", "smart contracts",
-    "cryptocurrency", "defi", "nft", "hyperledger",
-}
-
-SOFT_SKILLS = {
-    "communication", "leadership", "teamwork", "problem solving", "critical thinking",
-    "time management", "adaptability", "creativity", "collaboration", "presentation",
-    "negotiation", "conflict resolution", "decision making", "emotional intelligence",
-    "project management", "strategic thinking", "analytical thinking"
-}
-
+TECH_SKILLS = set(config["TECH_SKILLS"])
+SOFT_SKILLS = set(config["SOFT_SKILLS"])
 ALL_SKILLS = TECH_SKILLS.union(SOFT_SKILLS)
+ALIAS_MAP = config.get("ALIAS_MAP", {})
+DOMAIN_SKILLS = config.get("DOMAIN_SKILLS", {})
+SKILL_DEPENDENCIES = config.get("SKILL_DEPENDENCIES", {})
+SEMANTIC_SKILL_GROUPS = [set(g) for g in config.get("SEMANTIC_SKILL_GROUPS", [])]
 
-ALIAS_MAP = {
-    "reactjs": "react",
-    "react.js": "react",
-    "nodejs": "nodejs",
-    "node.js": "nodejs",
-    "node": "nodejs",
-    "py": "python",
-    "ts": "typescript",
-    "js": "javascript",
-    "sklearn": "scikit-learn",
-    "sk-learn": "scikit-learn",
-    "tf": "tensorflow",
-    "tensorflow2": "tensorflow",
-    "postgres": "postgresql",
-    "pg": "postgresql",
-    "k8s": "kubernetes",
-    "mongo": "mongodb",
-    "aws": "aws",
-    "gcp": "gcp",
-    "vue.js": "vue",
-    "vuejs": "vue",
-    "next.js": "nextjs"
-}
-
-# Domain maps for accurate skill gap analysis
-DOMAIN_SKILLS = {
-    "data science": ["python", "sql", "statistics", "pandas", "numpy", "machine learning", "tableau", "power bi", "r", "scikit-learn", "data analysis"],
-    "deep learning": ["python", "tensorflow", "pytorch", "keras", "neural networks", "opencv", "nlp", "machine learning", "deep learning"],
-    "frontend": ["html", "css", "javascript", "react", "vue", "angular", "typescript", "tailwind", "nextjs", "vite", "webpack"],
-    "backend": ["python", "java", "nodejs", "c#", "go", "sql", "mongodb", "postgresql", "redis", "django", "express", "fastapi", "spring"],
-    "devops": ["aws", "azure", "gcp", "docker", "kubernetes", "linux", "jenkins", "terraform", "git", "ci/cd", "ansible"],
-    "mobile": ["react native", "flutter", "swift", "kotlin", "ios", "android", "javascript"]
-}
-
-# Skill dependencies for learning path generation AND semantic matching fallback.
-# When BERT cosine similarity for short skill names is too low to trigger a
-# semantic match, the dependency graph provides a 0.5 partial-credit fallback.
-SKILL_DEPENDENCIES = {
-    "machine learning": ["python", "statistics"],
-    "deep learning": ["machine learning", "python", "tensorflow", "pytorch", "keras"],
-    "data science": ["python", "statistics", "sql", "pandas"],
-    "data analysis": ["python", "pandas", "sql", "statistics", "r"],
-    "full stack": ["html", "css", "javascript", "react", "nodejs"],
-    "devops": ["linux", "docker", "aws"],
-    "cloud": ["aws", "azure", "gcp", "linux"],
-    "mobile": ["javascript", "react native"],
-    "backend": ["python", "sql"],
-    "frontend": ["html", "css", "javascript"],
-    "react": ["javascript", "html", "css"],
-    "angular": ["typescript", "html", "css"],
-    "vue": ["javascript", "html", "css"],
-    "nodejs": ["javascript", "express"],
-    "django": ["python", "backend"],
-    "tensorflow": ["python", "machine learning", "keras"],
-    "pytorch": ["python", "machine learning"],
-    "pandas": ["python", "data analysis"],
-    "numpy": ["python"],
-    "kubernetes": ["docker", "linux"],
-    # SQL family — any SQL database implies SQL competence
-    "sql": ["mysql", "postgresql", "sqlite"],
-    "mysql": ["sql"],
-    "postgresql": ["sql"],
-    "sqlite": ["sql"],
-    # NoSQL family
-    "mongodb": ["nosql"],
-    # Framework → parent relationships
-    "express": ["nodejs", "javascript"],
-    "flask": ["python"],
-    "fastapi": ["python"],
-    "spring": ["java"],
-    "keras": ["tensorflow", "python"],
-    "scikit-learn": ["python", "machine learning"],
-}
-
-# Bidirectional semantic skill groups — skills in the same group are treated
-# as semantically equivalent during matching (0.85 partial credit).  This
-# covers pairs where BERT single-word cosine is unreliable.
-SEMANTIC_SKILL_GROUPS = [
-    {"mysql", "sql", "postgresql", "sqlite"},           # SQL family
-    {"tensorflow", "keras"},                             # TF ecosystem
-    {"pytorch", "tensorflow"},                           # DL frameworks
-    {"pandas", "data analysis"},                         # Data tooling
-    {"express", "nodejs"},                               # Node ecosystem
-    {"react", "frontend"},                               # Frontend frameworks
-    {"angular", "frontend"},
-    {"vue", "frontend"},
-    {"mongodb", "nosql"},                                # NoSQL family
-]
+# Try to load dynamic skills from MongoDB (Open Skills)
+try:
+    if "open_skills" in db.list_collection_names():
+        open_docs = list(db["open_skills"].find({}, {"name": 1}))
+        if open_docs:
+            ALL_SKILLS = set([doc["name"].lower() for doc in open_docs if "name" in doc])
+            print(f"Loaded {len(ALL_SKILLS)} skills from Open Skills MongoDB collection.")
+except Exception as e:
+    print(f"Warning: Could not load Open Skills from MongoDB. Using JSON fallback. {e}")
 
 # ============== NLP PIPELINE ==============
 
@@ -880,7 +708,14 @@ nlp_pipeline = NLPPipeline()
 
 def build_feedback_prompt(resume_text: str, job_description: Optional[str]) -> str:
     job_str = job_description if job_description else "None provided."
-    return f"""You are an expert resume coach and ATS optimization specialist. Analyze the provided resume — and job description if given — then return ONLY a valid JSON object with no markdown fences, no backticks, and no text before or after the JSON.
+    return f"""You are an expert resume coach and ATS optimization specialist. Analyze the provided resume — and job description if given.
+
+CRITICAL SCORING INSTRUCTIONS:
+- Do NOT round off scores to the nearest 5 or 10 (e.g., avoid giving exactly 80, 85, or 90).
+- Calculate exact, highly precise scores (e.g., 73, 86, 91, 68) based on a strict point deduction system.
+- Be extremely critical and rigorous. Subtract exact points for every missing keyword, lack of metrics, weak verb, or formatting flaw.
+
+Return ONLY a valid JSON object with no markdown fences, no backticks, and no text before or after the JSON.
 
 RESUME:
 {resume_text}
@@ -1208,8 +1043,16 @@ async def get_resume_feedback(resume_id: str, body: ResumeFeedbackRequest):
     import hashlib
     import json
     
-    prompt_str = f"resume:{resume_text}|job:{job_description}"
+    print(f"\n--- FEEDBACK DEBUG ---")
+    print(f"body.job_id: {body.job_id}")
+    print(f"body.job_description: {bool(body.job_description)}")
+    print(f"job_description length: {len(job_description) if job_description else 0}")
+    
+    # v2: added precise scoring instructions to the prompt
+    prompt_str = f"v2|resume:{resume_text}|job:{job_description}"
     prompt_hash = hashlib.sha256(prompt_str.encode('utf-8')).hexdigest()
+    print(f"prompt_hash: {prompt_hash}")
+    print(f"----------------------\n")
     
     cached_feedback = ai_feedback_cache.find_one({"_id": prompt_hash})
     if cached_feedback:

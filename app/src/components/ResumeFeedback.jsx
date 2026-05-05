@@ -21,16 +21,17 @@ const ResumeFeedback = ({ resumeId, jobs = [], onTabChange }) => {
   const [copiedSection, setCopiedSection] = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
 
-  const runAnalysis = async () => {
+  const runAnalysis = async (overrideJobId) => {
     if (!resumeId) return;
     setLoading(true);
     setError(null);
     setData(null);
     
     try {
-      const selectedJob = jobs.find(j => j.job_id === selectedJobId || j.id === selectedJobId);
+      const jobIdToUse = overrideJobId !== undefined ? overrideJobId : selectedJobId;
+      const selectedJob = jobs.find(j => j.job_id === jobIdToUse || j.id === jobIdToUse);
       const requestData = {
-        job_id: selectedJobId || null,
+        job_id: jobIdToUse || null,
         job_description: selectedJob ? selectedJob.description : null
       };
       
@@ -65,9 +66,12 @@ const ResumeFeedback = ({ resumeId, jobs = [], onTabChange }) => {
   const visibleJobs = uniqueJobs.slice(0, 3);
   const hiddenJobs = uniqueJobs.slice(3);
 
-  const score = data ? (data.overall_score || data.match_score || 0) : 0;
+  const isJobSelected = selectedJobId && selectedJobId !== "";
+  const score = data ? (isJobSelected && data.match_score !== null ? data.match_score : data.overall_score) || 0 : 0;
   const arcColor = score >= 75 ? "#E8521A" : score >= 50 ? "#9b8ec4" : "#d4a5a0";
-  const scoreLabel = score >= 75 ? 'Strong' : score >= 50 ? 'Average' : 'Needs Work';
+  const scoreLabel = isJobSelected 
+    ? (data?.match_label || (score >= 75 ? 'Strong Match' : score >= 50 ? 'Good Match' : 'Poor Match'))
+    : (score >= 75 ? 'Strong' : score >= 50 ? 'Average' : 'Needs Work');
 
   if (!resumeId) {
     return (
@@ -110,7 +114,11 @@ const ResumeFeedback = ({ resumeId, jobs = [], onTabChange }) => {
     return (
       <button
         key={id}
-        onClick={() => { setSelectedJobId(id); setShowDropdown(false); }}
+        onClick={() => { 
+          setSelectedJobId(id); 
+          setShowDropdown(false); 
+          runAnalysis(id);
+        }}
         style={{
           padding: "7px 14px", borderRadius: 9999, fontSize: 13, fontWeight: 500, cursor: "pointer",
           border: isSelected ? "none" : "1px solid rgba(0,0,0,0.12)",
@@ -173,22 +181,24 @@ const ResumeFeedback = ({ resumeId, jobs = [], onTabChange }) => {
         </div>
 
         {/* Row 3 */}
-        <motion.button
-          onClick={runAnalysis}
-          disabled={loading}
-          whileHover={!loading ? { scale: 1.01, boxShadow: "0 6px 24px rgba(232,82,26,0.4)" } : {}}
-          whileTap={!loading ? { scale: 0.98 } : {}}
-          transition={springs?.snappy}
-          style={{
-            background: loading ? "rgba(232,82,26,0.5)" : "linear-gradient(135deg, #E8521A, #f07a52)",
-            color: "white", border: "none", borderRadius: 10, padding: "13px 24px", fontSize: 15, fontWeight: 600,
-            cursor: loading ? "not-allowed" : "pointer", width: "100%",
-            boxShadow: loading ? "none" : "0 4px 16px rgba(232,82,26,0.3)",
-            transition: "all 0.2s ease", fontFamily: "inherit", letterSpacing: "0.01em"
-          }}
-        >
-          {loading ? "⏳ Analysing your resume…" : "✦ Analyse Resume"}
-        </motion.button>
+        {!data && (
+          <motion.button
+            onClick={() => runAnalysis(selectedJobId)}
+            disabled={loading}
+            whileHover={!loading ? { scale: 1.01, boxShadow: "0 6px 24px rgba(232,82,26,0.4)" } : {}}
+            whileTap={!loading ? { scale: 0.98 } : {}}
+            transition={springs?.snappy}
+            style={{
+              background: loading ? "rgba(232,82,26,0.5)" : "linear-gradient(135deg, #E8521A, #f07a52)",
+              color: "white", border: "none", borderRadius: 10, padding: "13px 24px", fontSize: 15, fontWeight: 600,
+              cursor: loading ? "not-allowed" : "pointer", width: "100%",
+              boxShadow: loading ? "none" : "0 4px 16px rgba(232,82,26,0.3)",
+              transition: "all 0.2s ease", fontFamily: "inherit", letterSpacing: "0.01em"
+            }}
+          >
+            {loading ? "⏳ Analysing your resume…" : "✦ Analyse Resume"}
+          </motion.button>
+        )}
       </div>
 
       {/* SECTION B - LOADING STATE */}
@@ -263,7 +273,9 @@ const ResumeFeedback = ({ resumeId, jobs = [], onTabChange }) => {
               </div>
 
               <div style={{ flex: 1, minWidth: 280 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.35)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>RESUME SCORE</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.35)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+                  {isJobSelected ? "MATCH SCORE" : "OVERALL SCORE"}
+                </div>
                 <p style={{ margin: 0, fontSize: 15, color: "rgba(0,0,0,0.75)", lineHeight: 1.7, marginBottom: 16 }}>{data.overall_summary}</p>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <div style={{ background: "rgba(232,82,26,0.07)", border: "1px solid rgba(232,82,26,0.2)", color: "#E8521A", padding: "5px 12px", borderRadius: 9999, fontSize: 12, fontWeight: 600 }}>

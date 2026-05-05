@@ -9,7 +9,8 @@ IntelliHire has been rebuilt with a modern **Xtract Dark Design System** — fea
 ### For Students/Users
 - **Premium Candidate Dashboard**: Navigate an intuitive dark-themed interface with buttery-smooth tab transitions.
 - **Resume Upload & OCR Analysis**: Upload digital or scanned PDF resumes. Built-in EasyOCR rasterizes and extracts text from image-based PDFs automatically.
-- **Semantic Skill Extraction**: NLP pipeline identifies technical and soft skills across 20+ non-technical and technical domains using Sentence Transformers (BERT).
+- **AI Resume Feedback**: Get section-by-section AI-powered critique and rewrite suggestions dynamically tailored to specific job descriptions using LLMs (Groq).
+- **Dynamic Skills Ontology**: Skills and proficiencies are evaluated against a massive, MongoDB-persisted open skills database containing over 30,000 unique keyless skills.
 - **Skill Strength & Gap Analysis**: Get proficiency scores based on experience context and pinpoint exact skills needed for your target jobs.
 - **Personalized Learning Path**: Get recommended learning sequences generated through a complex skill-dependency graphing algorithm.
 - **Live Job Matching**: Find internships and jobs matched to your profile using deep AI similarity scoring.
@@ -26,6 +27,7 @@ IntelliHire has been rebuilt with a modern **Xtract Dark Design System** — fea
 ### Backend
 - **FastAPI**: Modern, lightning-fast web framework
 - **PyMongo**: NoSQL Database management with MongoDB
+- **Groq API**: High-speed, advanced LLM integration for resume critique and rewriting
 - **EasyOCR / PyMuPDF (fitz)**: Advanced optical character recognition and PDF rendering
 - **Sentence-Transformers (BERT)**: Deep learning cosine similarity and embedding generation
 - **pdfplumber**: High-speed digital PDF text extraction
